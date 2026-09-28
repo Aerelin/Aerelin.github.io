@@ -1,0 +1,81 @@
+baseURL: "https://Aerelin.github.io/"
+title: "我的技术博客"
+theme: "PaperMod"
+languageCode: "zh-cn"
+defaultContentLanguage: "zh"
+paginate: 10
+
+enableRobotsTXT: true
+buildDrafts: false
+buildFuture: false
+buildExpired: false
+
+pygmentsUseClasses: true
+markup:
+  highlight:
+    anchorLineNos: false
+    codeFences: true
+    guessSyntax: true
+    lineNos: true
+    noClasses: false
+    style: "dracula"
+  goldmark:
+    renderer:
+      unsafe: true
+
+menu:
+  main:
+    - name: 首页
+      url: "/"
+      weight: 1
+    - name: Pwn 学习
+      url: "/categories/pwn/"
+      weight: 2
+    - name: 区块链
+      url: "/categories/blockchain/"
+      weight: 3
+    - name: 归档
+      url: "/archives/"
+      weight: 4
+    - name: 搜索
+      url: "/search/"
+      weight: 5
+    - name: 关于
+      url: "/about/"
+      weight: 6
+
+params:
+  env: production
+  title: "我的技术博客"
+  description: "网络安全 / Pwn / 区块链 学习笔记"
+  author: "Aerelin"
+  defaultTheme: "auto"
+  ShowReadingTime: true
+  ShowShareButtons: true
+  ShowPostNavLinks: true
+  ShowBreadCrumbs: true
+  ShowCodeCopyButtons: true
+  ShowToc: true
+  TocOpen: false
+
+  homeInfoParams:
+    Title: "欢迎来到我的技术博客"
+    Content: "网络安全学习笔记，主要记录 Pwn 和区块链的学习过程。"
+
+  socialIcons:
+    - name: github
+      url: "https://github.com/Aerelin"
+
+  fuse:
+    length: 2
+    threshold: 0.3
+
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON
+
+taxonomies:
+  category: categories
+  tag: tags
