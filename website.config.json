@@ -1,0 +1,8 @@
+{
+  "title": "Aerelin 的技术博客",
+  "description": "网络安全 / Pwn / 区块链 学习笔记",
+  "author": "Aerelin",
+  "site": "https://aerelin.github.io",
+  "base": "/",
+  "defaultLocale": "en"
+}
