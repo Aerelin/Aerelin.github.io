@@ -1,6 +1,6 @@
 {
-  "title": "Aerelin 的技术博客",
-  "description": "网络安全 / Pwn / 区块链 学习笔记",
+  "title": "Aerelin | 网络安全学习笔记",
+  "description": "二进制漏洞利用 / Pwn / 内核安全 / 区块链安全 — CTF Writeup 与技术研究",
   "author": "Aerelin",
   "site": "https://aerelin.github.io",
   "base": "/",
