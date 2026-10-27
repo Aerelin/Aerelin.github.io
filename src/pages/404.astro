@@ -1,6 +1,7 @@
 ---
 import { getStaticPathsFactory } from "astro-spaceship/components/404/utils/get-static-paths.ts";
-import Page from "astro-spaceship/components/404/Page.astro";
+import Layout from "astro-spaceship/components/Layout/Layout.astro";
+import LeftSidebar from "astro-spaceship/components/LeftSidebar/LeftSidebar.astro";
 
 import "@/styles/global.css";
 import config from "astro-spaceship/config";
@@ -10,6 +11,495 @@ const getStaticPaths = getStaticPathsFactory({
 })
 
 const { props } = (await getStaticPaths())[0]
----
 
-<Page {...props} />
+const page = {
+  language: config.defaultLocale,
+  title: "404 | Document not found",
+  seo: {
+    description: "你要找的文档不存在 — The document you are looking for does not exist.",
+  },
+}
+---
+<Layout page={page} config={config} footer={null}>
+  <LeftSidebar
+    website={config}
+    tree={props.tree}
+  />
+
+  <article class="article nf-page">
+    <section class="nf-hero">
+      <span class="nf-badge">// 404 · RESOURCE NOT FOUND</span>
+
+      <div class="nf-code" data-text="404">404</div>
+
+      <h1 class="nf-title">Document not found</h1>
+      <p class="nf-sub">你要找的文档不存在，可能已被移动或删除。</p>
+
+      <div class="nf-terminal">
+        <div class="nf-term-bar">
+          <i></i><i></i><i></i>
+          <span class="nf-term-title">aerelin@blog — ~/notes</span>
+        </div>
+        <div class="nf-term-body">
+          <div class="nf-line nf-cmd">
+            <span class="nf-ps">$</span><span class="nf-text" data-cmd="curl -L https://aerelin.github.io{PATH}">curl -L https://aerelin.github.io/404</span>
+          </div>
+          <div class="nf-line nf-err">
+            <span class="nf-text" data-res="HTTP/1.1 404 · Document not found">HTTP/1.1 404 · Document not found</span>
+          </div>
+          <div class="nf-line nf-cmd">
+            <span class="nf-ps">$</span><span class="nf-text" data-cmd="cat ./notes{PATH}">cat ./notes/404</span>
+          </div>
+          <div class="nf-line nf-err">
+            <span class="nf-text" data-res="cat: No such file or directory">cat: No such file or directory</span>
+          </div>
+          <div class="nf-line nf-cmd">
+            <span class="nf-ps">$</span><span class="nf-text" data-cmd="ls ./notes">ls ./notes</span>
+          </div>
+          <div class="nf-line nf-ok">
+            <span class="nf-text" data-res="about/  blockchain/  pwn-notes/  writeups/">about/  blockchain/  pwn-notes/  writeups/</span>
+          </div>
+          <div class="nf-line nf-cmd nf-final">
+            <span class="nf-ps">$</span><span class="nf-cursor"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="nf-actions">
+        <a class="nf-btn nf-btn-primary" href="/"><code>$ cd ~</code>返回首页</a>
+        <a class="nf-btn nf-btn-ghost" href="/about"><code>$ whoami</code>关于我</a>
+      </div>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .nf-page {
+    display: flex;
+  }
+
+  .nf-hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 4rem);
+    width: 100%;
+    padding: 4rem 1.25rem 5rem;
+    text-align: center;
+    overflow: clip;
+  }
+
+  /* ambient background */
+  .nf-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60vmin 42vmin at 50% 34%,
+        color-mix(in oklab, var(--color-primary) 16%, transparent),
+        transparent 70%);
+    animation: nf-breathe 8s ease-in-out infinite alternate;
+  }
+
+  .nf-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(color-mix(in oklab, var(--color-primary) 7%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklab, var(--color-primary) 7%, transparent) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(70vmin 52vmin at 50% 36%, #000 0%, transparent 100%);
+    -webkit-mask-image: radial-gradient(70vmin 52vmin at 50% 36%, #000 0%, transparent 100%);
+  }
+
+  /* badge */
+  .nf-badge {
+    position: relative;
+    max-width: 100%;
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-primary);
+    border: 1px solid color-mix(in oklab, var(--color-primary) 32%, transparent);
+    background: color-mix(in oklab, var(--color-primary) 7%, transparent);
+    border-radius: 999px;
+    padding: 0.42em 1.1em;
+    animation: nf-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+  }
+
+  /* glitchy 404 */
+  .nf-code {
+    position: relative;
+    margin-top: 1.6rem;
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: clamp(6.5rem, 19vw, 13rem);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: 0.04em;
+    background: linear-gradient(133deg,
+      hsl(258 88% 72%) 0%,
+      var(--color-primary) 38%,
+      var(--color-pink-500) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: nf-pop 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+    user-select: none;
+  }
+
+  .nf-code::before,
+  .nf-code::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .nf-code::before {
+    color: #22d3ee;
+    animation: nf-glitch-a 3.8s linear infinite;
+  }
+
+  .nf-code::after {
+    color: var(--color-pink-500);
+    animation: nf-glitch-b 4.6s linear infinite;
+  }
+
+  .nf-code:hover::before { animation-duration: 1.1s; }
+  .nf-code:hover::after { animation-duration: 1.4s; }
+
+  .nf-title {
+    position: relative;
+    margin: 1.4rem 0 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: clamp(1.4rem, 3.4vw, 2rem);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--color-text);
+    animation: nf-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+  }
+
+  .nf-sub {
+    position: relative;
+    margin: 0.55rem 0 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 1rem;
+    color: var(--color-gray-800);
+    animation: nf-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
+  }
+
+  :global(.body.dark) .nf-title {
+    color: var(--color-text-dark);
+  }
+
+  :global(.body.dark) .nf-sub {
+    color: var(--color-obsidian-800);
+  }
+
+  /* terminal */
+  .nf-terminal {
+    position: relative;
+    width: min(42rem, 100%);
+    min-width: 0;
+    max-width: 100%;
+    margin-top: 2.6rem;
+    border-radius: 12px;
+    background: #0d0d12;
+    border: 1px solid color-mix(in oklab, #000 20%, transparent);
+    box-shadow:
+      0 24px 60px -18px color-mix(in oklab, var(--color-primary) 26%, transparent),
+      0 8px 28px -12px rgb(0 0 0 / 0.4);
+    animation: nf-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.55s both;
+  }
+
+  .nf-term-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.72rem 0.95rem;
+    border-radius: 12px 12px 0 0;
+    background: #1b1b22;
+    border-bottom: 1px solid rgb(255 255 255 / 0.07);
+  }
+
+  .nf-term-bar i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+  }
+
+  .nf-term-bar i:nth-child(1) { background: #ff5f56; }
+  .nf-term-bar i:nth-child(2) { background: #ffbd2e; }
+  .nf-term-bar i:nth-child(3) { background: #27c93f; }
+
+  .nf-term-title {
+    margin-left: 0.6rem;
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    color: #8a8a99;
+  }
+
+  .nf-term-body {
+    position: relative;
+    min-height: 12.2em;
+    padding: 1.05rem 1.25rem 1.2rem;
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.88rem;
+    line-height: 1.75;
+    color: #d6d6e0;
+    overflow-x: auto;
+  }
+
+  /* faint scanlines */
+  .nf-term-body::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: 0 0 12px 12px;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0 2px,
+      rgb(255 255 255 / 0.016) 2px 4px);
+  }
+
+  .nf-line {
+    white-space: nowrap;
+    transition: opacity 0.28s ease;
+  }
+
+  .nf-ps {
+    margin-right: 0.55em;
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .nf-err .nf-text { color: #ff6b64; }
+  .nf-ok .nf-text { color: #9ece6a; }
+
+  .nf-cursor {
+    display: inline-block;
+    width: 0.55em;
+    height: 1.05em;
+    margin-left: 0.1em;
+    vertical-align: text-bottom;
+    background: var(--color-primary);
+    animation: nf-blink 1.05s steps(1) infinite;
+  }
+
+  /* actions */
+  .nf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.9rem;
+    max-width: 100%;
+    margin-top: 2.4rem;
+    animation: nf-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.75s both;
+  }
+
+  .nf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55em;
+    padding: 0.72em 1.45em;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease,
+      border-color 0.22s ease;
+  }
+
+  .nf-btn code {
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.82em;
+    font-weight: 500;
+    padding: 0.18em 0.55em;
+    border-radius: 6px;
+    background: rgb(0 0 0 / 0.16);
+    transition: background 0.22s ease;
+  }
+
+  .nf-btn-primary {
+    color: #fff;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-pink-500));
+    box-shadow: 0 10px 30px -10px color-mix(in oklab, var(--color-primary) 55%, transparent);
+  }
+
+  .nf-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 38px -10px color-mix(in oklab, var(--color-primary) 70%, transparent);
+  }
+
+  .nf-btn-ghost {
+    color: var(--color-primary);
+    border: 1px solid color-mix(in oklab, var(--color-primary) 38%, transparent);
+    background: color-mix(in oklab, var(--color-primary) 5%, transparent);
+  }
+
+  .nf-btn-ghost code { background: color-mix(in oklab, var(--color-primary) 10%, transparent); }
+
+  .nf-btn-ghost:hover {
+    transform: translateY(-2px);
+    background: color-mix(in oklab, var(--color-primary) 14%, transparent);
+    border-color: color-mix(in oklab, var(--color-primary) 60%, transparent);
+  }
+
+  /* keyframes */
+  @keyframes nf-rise {
+    from { opacity: 0; transform: translateY(22px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes nf-pop {
+    0% { opacity: 0; transform: translateY(26px) scale(0.92); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes nf-breathe {
+    from { opacity: 0.55; transform: scale(1); }
+    to { opacity: 0.95; transform: scale(1.07); }
+  }
+
+  @keyframes nf-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  /* small screens: shrink terminal type so more of each command fits */
+  @media (max-width: 480px) {
+    .nf-term-body {
+      font-size: 0.76rem;
+    }
+  }
+
+  @keyframes nf-glitch-a {
+    0%, 62%, 100% { opacity: 0; clip-path: inset(0 0 0 0); transform: none; }
+    64% { opacity: 0.85; clip-path: inset(18% 0 58% 0); transform: translate(-7px, 2px); }
+    68% { opacity: 0.85; clip-path: inset(62% 0 8% 0); transform: translate(6px, -2px); }
+    72% { opacity: 0.85; clip-path: inset(8% 0 74% 0); transform: translate(-5px, 1px); }
+    76% { opacity: 0.85; clip-path: inset(44% 0 38% 0); transform: translate(7px, -1px); }
+    80% { opacity: 0; clip-path: inset(0 0 0 0); transform: none; }
+    88% { opacity: 0.6; clip-path: inset(30% 0 52% 0); transform: translate(-6px, 2px); }
+    91% { opacity: 0; }
+  }
+
+  @keyframes nf-glitch-b {
+    0%, 70%, 100% { opacity: 0; clip-path: inset(0 0 0 0); transform: none; }
+    72% { opacity: 0.8; clip-path: inset(52% 0 22% 0); transform: translate(7px, -2px); }
+    76% { opacity: 0.8; clip-path: inset(10% 0 68% 0); transform: translate(-6px, 2px); }
+    80% { opacity: 0.8; clip-path: inset(70% 0 6% 0); transform: translate(5px, 1px); }
+    84% { opacity: 0.8; clip-path: inset(24% 0 60% 0); transform: translate(-7px, -1px); }
+    88% { opacity: 0; clip-path: inset(0 0 0 0); transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nf-badge,
+    .nf-code,
+    .nf-code::before,
+    .nf-code::after,
+    .nf-title,
+    .nf-sub,
+    .nf-terminal,
+    .nf-actions,
+    .nf-hero::before,
+    .nf-cursor {
+      animation: none !important;
+    }
+
+    .nf-badge,
+    .nf-code,
+    .nf-title,
+    .nf-sub,
+    .nf-terminal,
+    .nf-actions {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>
+
+<script>
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const body = document.querySelector<HTMLElement>(".nf-term-body");
+
+  if (body) {
+    const lines = Array.from(body.querySelectorAll<HTMLElement>(".nf-line"));
+    const cursor = body.querySelector<HTMLElement>(".nf-cursor");
+    const rawPath = decodeURIComponent(window.location.pathname).replace(/\/+$/, "");
+    const path = rawPath || "/";
+
+    const plan = lines.map((el) => {
+      const text = el.querySelector<HTMLElement>(".nf-text");
+      const cmd = text?.dataset.cmd;
+      const res = text?.dataset.res;
+      return {
+        el,
+        text,
+        content: (cmd ?? res ?? "").replace("{PATH}", path),
+        isCmd: cmd !== undefined,
+        hasText: text !== null,
+      };
+    });
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduced) {
+      for (const step of plan) {
+        if (step.text) step.text.textContent = step.content;
+      }
+    } else {
+      // reset lines for the typewriter
+      for (const step of plan) {
+        if (step.text) step.text.textContent = "";
+        step.el.style.opacity = "0";
+      }
+
+      const finalLine = plan[plan.length - 1]?.el;
+
+      const run = async () => {
+        await sleep(950);
+
+        for (const step of plan) {
+          if (!step.hasText) {
+            // final idle prompt line — keep cursor in place
+            step.el.style.opacity = "1";
+            continue;
+          }
+
+          if (step.isCmd) {
+            if (cursor) step.el.appendChild(cursor);
+            step.el.style.opacity = "1";
+            for (const ch of step.content) {
+              step.text!.textContent += ch;
+              await sleep(14 + Math.random() * 28);
+            }
+            await sleep(200);
+          } else {
+            step.el.style.opacity = "1";
+            await sleep(340);
+          }
+        }
+
+        if (cursor && finalLine) finalLine.appendChild(cursor);
+      };
+
+      run();
+    }
+  }
+</script>
