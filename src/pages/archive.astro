@@ -1,0 +1,122 @@
+---
+import { getCollection } from "astro:content";
+
+import { DOCUMENTS_COLLECTION_NAME } from "astro-spaceship/constants";
+import Layout from "astro-spaceship/components/Layout/Layout.astro";
+import { buildTree } from "astro-spaceship/components/Tree/utils/buildTree.ts";
+import config from "astro-spaceship/config";
+
+import LeftSidebarNav from "@/components/LeftSidebarNav.astro";
+import "@/styles/global.css";
+import { docFolder, docUrl, formatDate, readingMinutes, normalizePath } from "@/utils/docs";
+import type { Document } from "astro-spaceship/types";
+
+const documents = (await getCollection(DOCUMENTS_COLLECTION_NAME)) as Document[];
+const visible = documents
+  .filter((doc) => doc.data.publish !== false && normalizePath(doc.id) !== "about")
+  .sort((a, b) => {
+    const byDate = new Date(b.data.created).getTime() - new Date(a.data.created).getTime();
+    return byDate !== 0 ? byDate : docUrl(a).localeCompare(docUrl(b), "en", { numeric: true });
+  });
+
+const tree = buildTree(documents);
+
+const folderLabels: Record<string, string> = {
+  writeups: "CTF Writeup",
+  "pwn-notes": "Pwn 学习笔记",
+  blockchain: "区块链与安全",
+};
+
+const groups = Object.entries(
+  visible.reduce<Record<string, Document[]>>((acc, doc) => {
+    const folder = docFolder(doc);
+    acc[folder] ??= [];
+    acc[folder].push(doc);
+    return acc;
+  }, {}),
+).sort(([a], [b]) => Object.keys(folderLabels).indexOf(a) - Object.keys(folderLabels).indexOf(b));
+
+const page = {
+  title: "文章归档",
+  language: config.defaultLocale,
+  seo: {
+    title: `文章归档 | ${config.title}`,
+    description: `全部 ${visible.length} 篇 CTF Writeup 与 Pwn 学习笔记，按发布时间倒序。`,
+  },
+};
+---
+
+<Layout config={config} page={page} footer={null}>
+  <LeftSidebarNav website={config} tree={tree} />
+  <article class="article">
+    <section class="article-content">
+      <h1 class="article-title">文章归档</h1>
+      <div class="article-meta-line">
+        <span class="meta-muted">共 {visible.length} 篇，按发布时间倒序</span>
+      </div>
+
+      <div class="article-body">
+        {
+          groups.map(([folder, docs]) => (
+            <div class="archive-group">
+              <h2 id={`archive-${folder}`}>{folderLabels[folder] ?? folder}</h2>
+              <ul class="archive-list">
+                {docs.map((doc) => (
+                  <li>
+                    <a href={docUrl(doc)}>{doc.data.title}</a>
+                    <span class="archive-meta">
+                      {formatDate(doc.data.created)} · {readingMinutes(doc.body)} 分钟
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .archive-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 2rem;
+  }
+
+  .archive-list li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 0.25rem;
+    border-bottom: 1px dashed var(--color-hr-border);
+  }
+
+  .archive-list a {
+    text-decoration: none;
+    color: var(--color-text-normal);
+    font-weight: 500;
+    line-height: 1.6;
+  }
+
+  .archive-list a:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+
+  .archive-meta {
+    flex: none;
+    font-size: 0.78rem;
+    color: var(--color-text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 640px) {
+    .archive-list li {
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+  }
+</style>

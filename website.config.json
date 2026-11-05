@@ -4,5 +4,11 @@
   "author": "Aerelin",
   "site": "https://aerelin.github.io",
   "base": "/",
-  "defaultLocale": "en"
+  "defaultLocale": "en",
+  "features": {
+    "rightSidebar": {
+      "mode": "column",
+      "toc": { "enabled": true }
+    }
+  }
 }

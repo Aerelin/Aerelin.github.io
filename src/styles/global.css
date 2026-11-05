@@ -1,1 +1,172 @@
 @import "spaceship-monolith/theme";
+
+/* ------------------------------------------------------------------
+   正文阅读体验覆盖：字体、行距、宽度、图片、表格、代码
+   仅调整排版，不改变主题结构与功能
+   ------------------------------------------------------------------ */
+
+:root {
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 正文可读宽度：默认 60ch 对技术文章偏窄，代码与表格容易横向溢出 */
+.article-content,
+.article-body {
+  --content: min(76ch, 100% - 2rem) !important;
+}
+
+/* 段落与列表：主题默认 2.25rem 行高 + 2.25rem 段间距，过于松散 */
+.article-body p {
+  margin: 0.95em 0 !important;
+  line-height: 1.85 !important;
+}
+
+.article-body li {
+  line-height: 1.8 !important;
+}
+
+.article-body ul,
+.article-body ol {
+  margin-top: 0.8em !important;
+  margin-bottom: 1em !important;
+}
+
+/* 标题层级：收紧上下间距，h2 加分隔线提升扫读效率 */
+.article-body h2 {
+  margin-top: 2.2em !important;
+  margin-bottom: 0.75em !important;
+  line-height: 1.35 !important;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-hr-border);
+}
+
+.article-body h3 {
+  margin-top: 1.7em !important;
+  margin-bottom: 0.55em !important;
+  line-height: 1.4 !important;
+}
+
+.article-body h4 {
+  margin-top: 1.3em !important;
+  margin-bottom: 0.45em !important;
+}
+
+/* 图片：主题把截图强制压到 396px 高并带旋转，技术截图会被缩小、倾斜 */
+.article-body img {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: none !important;
+  border-radius: 8px !important;
+  object-fit: contain !important;
+}
+
+.article-body figure,
+.article-body .figure-image {
+  height: auto !important;
+  max-height: none !important;
+  transform: none !important;
+  margin: 1.4em 0 !important;
+}
+
+.article-body figcaption {
+  margin-top: 0.6em !important;
+  font-size: 0.82rem !important;
+  line-height: 1.6 !important;
+  opacity: 0.7;
+}
+
+/* 表格：主题去掉了所有边框，纯文本表格很难对齐阅读 */
+.article-body table {
+  display: table !important;
+  width: 100% !important;
+  margin: 1.3em 0 !important;
+  border-collapse: collapse !important;
+  font-size: 0.92em !important;
+}
+
+.article-body th,
+.article-body td {
+  height: auto !important;
+  padding: 0.45em 0.7em !important;
+  line-height: 1.6 !important;
+  border: 1px solid var(--color-hr-border) !important;
+  vertical-align: top;
+}
+
+.article-body thead th {
+  background: var(--color-code-background);
+  font-weight: 600;
+}
+
+.article-body tr {
+  border: none !important;
+}
+
+/* 代码：取消纸张倾斜装饰，降低字号、放宽行距，长命令更易读 */
+.article-body .expressive-code {
+  transform: none !important;
+  border: 1px solid var(--color-hr-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.article-body .expressive-code::before,
+.article-body .expressive-code::after {
+  display: none;
+}
+
+.article-body .expressive-code code {
+  font-size: 0.85rem !important;
+  line-height: 1.6 !important;
+}
+
+.article-body code {
+  font-size: 0.9em;
+}
+
+/* 链接可辨识度：正文内链接加下划线 */
+.article-body a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+/* 目录栏：主题 column 模式缺少布局样式，补上内边距与滚动 */
+.column {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 1.25rem 0.9rem;
+}
+
+.column-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.column .table-of-contents {
+  position: sticky;
+  top: 0;
+}
+
+/* 目录标题本地化（主题内置文案为英文） */
+.table-of-contents-title {
+  font-size: 0 !important;
+}
+
+.table-of-contents-title::after {
+  content: "本页目录";
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+/* 移动端：进一步压缩留白，避免一屏只看到两三行 */
+@media (max-width: 640px) {
+  .article-body p {
+    margin: 0.85em 0 !important;
+    line-height: 1.75 !important;
+  }
+}

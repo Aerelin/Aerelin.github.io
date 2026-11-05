@@ -1,0 +1,57 @@
+---
+import type { SpaceshipConfig, TreeData } from "astro-spaceship/types";
+
+import NavigationTree from "astro-spaceship/components/Tree/Tree.astro";
+import Sidebar from "astro-spaceship/components/Sidebar/Sidebar.astro";
+import Header from "astro-spaceship/components/Header/Header.astro";
+import Search from "astro-spaceship/components/Search/Search.astro";
+
+export type Props = {
+  tree: TreeData;
+  website: SpaceshipConfig;
+  open?: boolean;
+};
+
+const { tree, website, open = true } = Astro.props;
+---
+
+<Sidebar class="sidebar-desktop" id="left-sidebar-desktop" open={open}>
+  <Header id="header-desktop" config={website} />
+  <Search />
+  <nav class="quick-links" aria-label="站点导航">
+    <a href="/archive">文章归档</a>
+    <a href="/tags">标签索引</a>
+  </nav>
+  <NavigationTree tree={tree} />
+</Sidebar>
+
+<Sidebar class="sidebar-touch" id="left-sidebar-touch">
+  <Header id="header-touch" config={website} />
+  <Search />
+  <nav class="quick-links" aria-label="站点导航">
+    <a href="/archive">文章归档</a>
+    <a href="/tags">标签索引</a>
+  </nav>
+  <NavigationTree tree={tree} />
+</Sidebar>
+
+<style>
+  .quick-links {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.35rem 1rem 0.65rem;
+    font-size: 13px;
+    font-family: var(--font-menu);
+  }
+
+  .quick-links a {
+    color: var(--color-menu-foreground);
+    opacity: 0.75;
+    text-decoration: none;
+    border-bottom: 1px dashed currentColor;
+  }
+
+  .quick-links a:hover {
+    opacity: 1;
+  }
+</style>

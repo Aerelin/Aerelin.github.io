@@ -5,3 +5,39 @@
 	--assets-twinkling: url('../assets/twinkling.png');
 	--assets-clouds: url('../assets/clouds.png');
 }
+
+/* 首页入口：给封面加一条轻量导航，避免访客只能点标题进入关于页 */
+.landing-nav {
+	position: fixed;
+	left: 50%;
+	bottom: 1.75rem;
+	transform: translateX(-50%);
+	z-index: 50;
+	display: flex;
+	gap: 0.25rem;
+	padding: 0.35rem 0.5rem;
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 999px;
+	background: rgba(10, 12, 24, 0.55);
+	backdrop-filter: blur(10px);
+	font-size: 0.82rem;
+}
+
+.landing-nav a {
+	padding: 0.35rem 0.85rem;
+	border-radius: 999px;
+	color: rgba(255, 255, 255, 0.86);
+	text-decoration: none;
+	transition: background 0.2s ease, color 0.2s ease;
+}
+
+.landing-nav a:hover {
+	background: rgba(255, 255, 255, 0.12);
+	color: #fff;
+}
+
+@media (max-width: 640px) {
+	.landing-nav {
+		bottom: 1rem;
+	}
+}

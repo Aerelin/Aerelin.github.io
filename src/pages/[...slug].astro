@@ -1,17 +1,63 @@
 ---
-import { getStaticPathsFactory, type Props } from "astro-spaceship/components/Article/utils/get-static-paths.ts";
-import Page from 'astro-spaceship/components/Article/Page.astro';
+import { getCollection } from "astro:content";
+import {
+  getStaticPathsFactory,
+  type Props as ArticleProps,
+} from "astro-spaceship/components/Article/utils/get-static-paths.ts";
+import { DOCUMENTS_COLLECTION_NAME } from "astro-spaceship/constants";
 
-import '@/styles/global.css';
-import config from 'astro-spaceship/config';
+import ArticlePage from "@/components/ArticlePage.astro";
+import "@/styles/global.css";
+import config from "astro-spaceship/config";
+import { docUrl, normalizePath } from "@/utils/docs";
 
+type DocLink = {
+  title: string;
+  permalink: string;
+};
 
-export type { Props };
+export type Props = ArticleProps & {
+  prev?: DocLink;
+  next?: DocLink;
+};
 
-export const getStaticPaths = getStaticPathsFactory({
-  config,
-});
+export const getStaticPaths = async () => {
+  const factory = getStaticPathsFactory({ config });
+  const paths = await factory();
 
+  const documents = (await getCollection(DOCUMENTS_COLLECTION_NAME)) as ArticleProps["document"][];
+  const ordered = documents
+    .filter((doc) => doc.data.publish !== false && normalizePath(doc.id) !== "about")
+    .sort((a, b) => normalizePath(a.id).localeCompare(normalizePath(b.id), "en", { numeric: true }));
+
+  const indexById = new Map(ordered.map((doc, index) => [normalizePath(doc.id), index]));
+  const site = (config.site ?? "https://aerelin.github.io").replace(/\/$/, "");
+
+  return paths.map((path) => {
+    const index = indexById.get(normalizePath(path.props.document.id)) ?? -1;
+    const prevDoc = index > 0 ? ordered[index - 1] : undefined;
+    const nextDoc = index >= 0 && index < ordered.length - 1 ? ordered[index + 1] : undefined;
+    const permalink = docUrl(path.props.document);
+    const canonicalUrl = `${site}${permalink}`;
+
+    return {
+      ...path,
+      props: {
+        ...path.props,
+        prev: prevDoc ? { title: prevDoc.data.title, permalink: docUrl(prevDoc) } : undefined,
+        next: nextDoc ? { title: nextDoc.data.title, permalink: docUrl(nextDoc) } : undefined,
+        page: {
+          ...path.props.page,
+          seo: {
+            ...path.props.page.seo,
+            canonicalUrl,
+            openGraph: { ...path.props.page.seo.openGraph, url: canonicalUrl },
+          },
+        },
+      },
+    };
+  });
+};
 ---
 
-<Page {...Astro.props} />
+<ArticlePage {...Astro.props} />

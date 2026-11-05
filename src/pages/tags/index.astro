@@ -1,0 +1,92 @@
+---
+import { getCollection } from "astro:content";
+
+import { DOCUMENTS_COLLECTION_NAME } from "astro-spaceship/constants";
+import Layout from "astro-spaceship/components/Layout/Layout.astro";
+import { buildTree } from "astro-spaceship/components/Tree/utils/buildTree.ts";
+import config from "astro-spaceship/config";
+
+import LeftSidebarNav from "@/components/LeftSidebarNav.astro";
+import "@/styles/global.css";
+import type { Document } from "astro-spaceship/types";
+
+const documents = (await getCollection(DOCUMENTS_COLLECTION_NAME)) as Document[];
+const tree = buildTree(documents);
+
+const counts = new Map<string, number>();
+for (const doc of documents) {
+  if (doc.data.publish === false) continue;
+  for (const tag of doc.data.tags ?? []) {
+    counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+}
+
+const tags = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh"));
+
+const page = {
+  title: "标签索引",
+  language: config.defaultLocale,
+  seo: {
+    title: `标签索引 | ${config.title}`,
+    description: `按主题浏览 ${documents.length} 篇文章。`,
+  },
+};
+---
+
+<Layout config={config} page={page} footer={null}>
+  <LeftSidebarNav website={config} tree={tree} />
+  <article class="article">
+    <section class="article-content">
+      <h1 class="article-title">标签索引</h1>
+      <div class="article-meta-line">
+        <span class="meta-muted">共 {tags.length} 个标签</span>
+      </div>
+
+      <div class="article-body">
+        <div class="tag-index">
+          {
+            tags.map(([tag, count]) => (
+              <a class="tag-chip" href={`/tags/${encodeURIComponent(tag)}`}>
+                <span>{tag}</span>
+                <em>{count}</em>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .tag-index {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--color-hr-border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: var(--color-text-normal);
+    text-decoration: none;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+
+  .tag-chip:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .tag-chip em {
+    font-style: normal;
+    font-size: 0.72rem;
+    color: var(--color-text-faint);
+  }
+</style>
