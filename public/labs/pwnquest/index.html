@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PwnQuest Lab：从内存原理到真实 CTF 的交互式 Pwn 训练平台">
+  <title>PwnQuest Lab · 内存攻防实验室</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="brand" id="homeBtn" aria-label="返回首页">
+      <span class="brand-mark">PQ</span>
+      <span><strong>PwnQuest</strong><small>MEMORY SECURITY LAB</small></span>
+    </button>
+    <div class="topbar-center"><span class="status-dot"></span> LOCAL TRAINING ENVIRONMENT</div>
+    <div class="topbar-actions">
+      <button class="icon-button" id="labBtn" title="真实靶场模式">真实靶场 <span class="beta">LAB</span></button>
+      <a class="icon-button" href="https://aerelin.github.io/pwnquest-lab" title="使用指南" style="text-decoration:none;display:inline-flex;align-items:center">指南</a>
+      <button class="icon-button" id="mistakesBtn" title="错题与复盘">错题本 <span id="mistakeCount" class="count">0</span></button>
+      <button class="icon-button" id="exportBtn" title="导出学习进度">导出进度</button>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="footer">
+    <span>PWNQUEST LAB / CORE WEB EDITION</span>
+    <span>所有模拟均在本地浏览器运行 · 进度仅保存在当前设备</span>
+  </footer>
+
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header"><h2 id="modalTitle"></h2><button class="close-button" id="closeModal" aria-label="关闭">×</button></div>
+      <div id="modalBody" class="modal-body"></div>
+    </section>
+  </div>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
