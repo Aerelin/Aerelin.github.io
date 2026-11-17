@@ -1,7 +1,7 @@
 {
   "date": "2026-11-17",
-  "title": "Pwn 每日一练 · Day 001",
-  "topics": ["保护机制", "栈溢出", "GOT/PLT", "ret2libc", "格式化字符串"],
+  "title": "Pwn 每日一练 · Day 002",
+  "topics": ["保护机制", "堆利用", "格式化字符串", "GOT/PLT", "IO_FILE", "内核利用基础", "pwntools", "GDB调试"],
   "estimatedMinutes": 30,
   "questions": [
     {
@@ -9,124 +9,123 @@
       "type": "choice",
       "difficulty": "basic",
       "topic": "保护机制",
-      "question": "关于 NX (No-Execute) 保护，下列说法正确的是？",
+      "question": "关于 PIE (Position Independent Executable) 保护，下列说法正确的是？",
       "options": [
-        "NX 开启后栈和堆上的数据均不可作为代码执行",
-        "NX 可以阻止栈溢出漏洞的发生",
-        "NX 开启后无法使用 ret2libc 进行利用",
-        "NX 只保护栈段，不保护堆段"
+        "PIE 是内核级运行时机制，随机化栈和堆地址",
+        "PIE 开启后程序代码段（.text）基址在运行时随机化",
+        "PIE 可以防止栈溢出漏洞的发生",
+        "PIE 开启后 GOT 表地址固定不变"
       ],
-      "answer": 0,
-      "explanation": "NX 将栈、堆等数据段标记为不可执行，阻止 shellcode 直接执行。它不阻止漏洞本身，也不影响 ret2libc 等返回导向利用（ROP）。"
+      "answer": 1,
+      "explanation": "PIE 是编译时选项（-fPIE -pie），使程序自身代码段、数据段基址在运行时随机化。它不等同于 ASLR（ASLR 由内核控制栈/堆/libc 随机化）。PIE 不阻止漏洞本身，但增加了利用时获取程序基址的难度，通常需先泄露一个程序内固定偏移的地址再减去符号偏移得到基址。"
     },
     {
       "id": "q2",
       "type": "choice",
       "difficulty": "basic",
-      "topic": "GOT/PLT",
-      "question": "在 Partial RELRO 保护下，下列哪个节仍然可写？",
-      "options": [".got", ".got.plt", ".plt", ".text"],
-      "answer": 1,
-      "explanation": "Partial RELRO 下 .got 只读、.got.plt 可写，可通过篡改 .got.plt 中的函数地址实现 GOT 劫持。Full RELRO 下两者均只读。"
+      "topic": "保护机制",
+      "question": "ASLR 与 PIE 的关系，下列描述正确的是？",
+      "options": [
+        "ASLR 和 PIE 是同一个机制的不同名称",
+        "ASLR 随机化程序代码段，PIE 随机化 libc 地址",
+        "ASLR 是内核级机制，PIE 是编译时选项，两者独立且配合生效",
+        "开启 PIE 后 ASLR 自动失效"
+      ],
+      "answer": 2,
+      "explanation": "ASLR 是操作系统内核提供的运行时机制，随机化栈、堆、共享库（libc）等地址；PIE 是编译时选项，使可执行文件本身支持基址随机化。两者是独立的随机值，无固定关联，需要分别泄露和计算各自的基址偏移。checksec 只能查看程序的 PIE 属性，无法查看系统 ASLR 状态。"
     },
     {
       "id": "q3",
       "type": "fill",
       "difficulty": "basic",
-      "topic": "保护机制",
-      "question": "checksec 输出中，Stack: Canary found 表示程序启用了______保护。",
-      "answer": "Canary",
-      "explanation": "Canary（栈金丝雀）在返回地址前插入随机值，函数返回前校验，若被覆盖则触发 __stack_chk_fail 终止程序，防止普通栈溢出覆盖返回地址。"
+      "topic": "pwntools",
+      "question": "pwntools 中创建本地进程连接使用 ______('./binary')，创建远程 TCP 连接使用 ______('host', port)。",
+      "answer": ["process;remote", "process，remote"],
+      "explanation": "process() 启动本地二进制并建立管道通信，remote() 连接远程主机的指定端口。两者返回的 tube 对象接口一致（sendline/recvline/interactive 等），因此 exploit 脚本通常只需切换这一处即可在本地/远程间切换。"
     },
     {
       "id": "q4",
       "type": "fill",
       "difficulty": "basic",
-      "topic": "栈溢出",
-      "question": "32位程序通过______系统调用号（eax）触发 write，向标准输出写数据时 ebx 应设为______。",
-      "answer": ["4;1", "4，1"],
-      "explanation": "32位 Linux write 系统调用号为 4，ebx=1 表示标准输出(stdout)，ecx=缓冲区地址，edx=长度。"
+      "topic": "GDB调试",
+      "question": "GDB 命令 x/10gx 中，10 表示查看的单元数量，g 表示单元大小为 ______ 字节，x 表示以 ______ 进制显示。",
+      "answer": ["8;十六", "8，16"],
+      "explanation": "x 命令格式为 x/NFU：N=数量，F=显示格式（x=十六进制、s=字符串、i=指令），U=单元大小（b=1字节、h=2字节、w=4字节、g=8字节）。x/10gx 即以 8 字节为单位、十六进制格式查看 10 个单元，常用于查看 64 位栈或内存内容。"
     },
     {
       "id": "q5",
       "type": "choice",
-      "difficulty": "medium",
-      "topic": "格式化字符串",
-      "question": "格式化字符串漏洞中，要向地址 0x0804a000 写入值 0x1234，最适合使用的格式说明符是？",
+      "difficulty": "basic",
+      "topic": "one_gadget",
+      "question": "one_gadget 工具的主要作用是？",
       "options": [
-        "%s",
-        "%n",
-        "%x",
-        "%p"
+        "自动生成 ROP 链",
+        "在 libc 中查找可直接 getshell 的 execve(\"/bin/sh\", 0, 0) gadget 地址",
+        "泄露 libc 基址",
+        "检测程序保护机制"
       ],
       "answer": 1,
-      "explanation": "%n 将当前已输出字符数写入对应参数指向的地址，是格式化字符串写原语。%hn 写 2 字节、%hhn 写 1 字节，更适合精确覆盖。"
+      "explanation": "one_gadget 静态分析 libc，找到满足一定约束条件（如某些寄存器指向 NULL、rsp 对齐等）即可直接执行 execve(\"/bin/sh\", NULL, NULL) 的 gadget 地址。利用时将返回地址指向 one_gadget 地址，比 system(\"/bin/sh\") 更简洁，但需注意约束条件是否满足（通常需要栈对齐或寄存器控制）。"
     },
     {
       "id": "q6",
-      "type": "fill",
+      "type": "choice",
       "difficulty": "medium",
-      "topic": "ret2libc",
-      "question": "64位 System V ABI 中，函数前 6 个整型参数依次通过 ______、______、______、rcx、r8、r9 寄存器传递。",
-      "answer": "rdi;rsi;rdx",
-      "explanation": "64位传参顺序：rdi、rsi、rdx、rcx、r8、r9。构造 ROP 链时需用 pop rdi;ret 等 gadget 将参数从栈加载到对应寄存器。"
+      "topic": "堆利用",
+      "question": "关于 glibc 中的 tcache 机制，下列说法错误的是？",
+      "options": [
+        "tcache 每个大小类最多缓存 7 个 chunk",
+        "tcache 采用 LIFO（后进先出）管理方式",
+        "tcache 在 glibc 2.26 及以上版本引入",
+        "tcache 中的 chunk 被 free 后 fd 指针经过 safe-linking 加密，无法篡改"
+      ],
+      "answer": 3,
+      "explanation": "tcache 从 glibc 2.26 引入，每个大小类（0x20 起）最多 7 个 chunk，LIFO 管理。早期版本 tcache 的 fd 无校验，极易被 tcache poisoning 篡改；新版本（glibc 2.32+）引入 safe-linking 对 fd 进行异或加密，但通过泄露 heap 基址计算密钥后仍可伪造 fd 实现任意分配。因此 safe-linking 增加了难度但并非无法篡改。"
     },
     {
       "id": "q7",
-      "type": "choice",
+      "type": "fill",
       "difficulty": "medium",
-      "topic": "ret2libc",
-      "question": "64位 ROP 链中，调用 system 前出现 movaps 指令段错误，最可能的原因是？",
-      "options": [
-        "libc 版本不匹配",
-        "栈未 16 字节对齐",
-        "GOT 表被篡改",
-        "Canary 校验失败"
-      ],
-      "answer": 1,
-      "explanation": "movaps 要求内存操作数 16 字节对齐。64位 ABI 规定函数调用前 rsp 需 16 字节对齐，system 内部 movaps 崩溃通常是 ret 对齐缺失导致。修复方法是在 system 前加一个 ret gadget。"
+      "topic": "格式化字符串",
+      "question": "格式化字符串中，直接访问第 5 个参数并以十六进制输出，应使用格式说明符 ______。",
+      "answer": ["%5$x", "%5$p"],
+      "explanation": "使用 $ 直接参数访问语法：%N$format 直接访问第 N 个参数。%5$x 以十六进制输出第 5 个参数，%5$p 以指针格式输出。该语法是格式化字符串漏洞利用的核心，可精确控制读取任意栈位置或向指定地址写入（配合 %n）。"
     },
     {
       "id": "q8",
       "type": "qa",
       "difficulty": "medium",
-      "topic": "ret2libc",
-      "question": "32位程序存在栈溢出，已通过 puts 泄露 libc 基址。请用文字描述调用 system(\"/bin/sh\") 的 ROP 链栈布局（从低地址到高地址）。",
-      "answer": "padding + system_addr + ret_addr + binsh_addr\n\n其中 padding 覆盖到返回地址位置；system_addr 为 libc 中 system 函数地址；ret_addr 为调用后的返回地址（可填 main 或 exit）；binsh_addr 为 libc 中 \"/bin/sh\" 字符串地址。32位 cdecl 约定参数从右往左压栈，因此参数在返回地址之后。",
-      "explanation": "32位 cdecl 调用约定通过栈传参。执行 ret 后 eip 指向 system，此时栈顶是 ret_addr，再往下是参数。因此布局为：padding → system → 返回地址 → 参数。"
+      "topic": "GOT/PLT",
+      "question": "简述动态链接中 PLT/GOT 的延迟绑定（lazy binding）流程。",
+      "answer": "延迟绑定流程：\n1. 程序首次调用某 libc 函数时，跳转到该函数对应的 PLT 项（PLT[n]）。\n2. PLT[n] 执行 jmp *GOT[n]，首次调用时 GOT[n] 存储的是 PLT[n] 下一条指令的地址（push 索引），因此跳回 PLT[n] 继续执行。\n3. PLT[n] 将该函数的重定位索引压栈，然后跳转到 PLT[0]。\n4. PLT[0] 将 _GLOBAL_OFFSET_TABLE_+8 压栈，跳转到 PLT[1]。\n5. PLT[1] 调用 _dl_runtime_resolve，根据索引在动态链接信息中查找函数真实地址，写入 GOT[n]。\n6. 后续再次调用该函数时，PLT[n] 的 jmp *GOT[n] 直接跳转到真实函数地址，不再经过解析。\n\n若开启 Full RELRO（BIND_NOW），所有函数在加载时即完成绑定，GOT 全程只读。",
+      "explanation": "延迟绑定是动态链接的性能优化，只在首次调用时解析地址。利用角度：Partial RELRO 下 GOT.plt 可写，篡改 GOT[n] 即可劫持函数调用；若攻击者能控制程序执行流且程序存在输出函数，可通过 PLT 调用泄露 GOT 中的已解析地址来计算 libc 基址。"
     },
     {
       "id": "q9",
-      "type": "choice",
+      "type": "qa",
       "difficulty": "hard",
-      "topic": "格式化字符串",
-      "question": "利用格式化字符串漏洞进行任意写时，若目标写入较大数值导致输出过长，应优先采用哪种策略？",
-      "options": [
-        "使用 %n 一次性写入全部字节",
-        "使用 %hhn 分多次单字节写入",
-        "放弃写入改用 %s 泄露",
-        "增大 padding 直接用 %n"
-      ],
-      "answer": 1,
-      "explanation": "%n 写入值等于已输出字符数，写大数值需输出大量字符效率低。%hhn 每次写 1 字节，可分 4/8 次分别写入每个字节，通过多次格式化或一次链中多个 %hhn 实现，是任意写的标准做法。"
+      "topic": "堆利用",
+      "question": "某菜单题存在 UAF 漏洞（free 后未置空指针，可再次 edit 已释放 chunk）。程序使用 glibc 2.31，目标是 getshell。请简述利用思路。",
+      "answer": "利用思路（以 tcache poisoning 为例）：\n\n1. 申请若干 chunk（如 A、B、C），大小相同且落入 tcache 范围（如 0x90）。\n2. free(A) → A 进入 tcache，fd 指向 NULL。此时仍可通过 UAF 编辑 A 的内容。\n3. 利用 UAF 将 A 的 fd 改写为目标地址（如 __free_hook 或 malloc 的 hook 附近），需绕过 safe-linking：glibc 2.32+ fd 会与 (heap_base >> 12) 异或，需先泄露 heap 基址。glibc 2.31 无 safe-linking，可直接写入目标地址。\n4. 连续申请两次同大小 chunk：第一次拿回 A（tcache LIFO），第二次从 tcache 取出时返回伪造的目标地址，从而在目标地址处获得一个可控 chunk。\n5. 向该 chunk 写入 system 地址（覆盖 __free_hook），再 free 一个内容为 \"/bin/sh\" 的 chunk，即触发 system(\"/bin/sh\")。\n\n若目标为 glibc 2.34+（已移除 __free_hook），需改用 IO_FILE FSOP 或其他 hook 替代方案。",
+      "explanation": "UAF 的核心是释放后指针仍可用，使得攻击者能修改已释放 chunk 的 fd/bk 等元数据。tcache 由于数量少、校验弱，是 UAF 利用的首选目标。glibc 版本决定具体利用手法：2.31 无 safe-linking 可直接 tcache poisoning；2.32+ 需泄露 heap 基址计算异或密钥；2.34+ 移除 hook 后需转向 FSOP 等技术。"
     },
     {
       "id": "q10",
-      "type": "fill",
+      "type": "qa",
       "difficulty": "hard",
-      "topic": "栈迁移",
-      "question": "栈迁移利用中，通常利用 leave; ret  gadget 将 rsp 切换到可控区域。leave 指令等价于 ______; ______。",
-      "answer": "mov rsp, rbp; pop rbp",
-      "explanation": "leave 等价于 mov rsp, rbp（栈顶指向旧栈帧基址）然后 pop rbp（恢复 rbp）。通过控制 rbp 的值，配合 ret 可将 rsp 迁移到攻击者可控的内存区域，从而在受限溢出下布置更长 ROP 链。"
+      "topic": "IO_FILE",
+      "question": "简述 IO_FILE 结构 FSOP（File Stream Oriented Programming）利用的基本原理和关键控制点。",
+      "answer": "FSOP 基本原理：\n\n1.  glibc 中 FILE 结构体（_IO_FILE_plus）包含 vtable 指针，fclose/fflush 等操作会调用 vtable 中的函数指针（如 __overflow、__xsgetn 等）。\n2.  攻击者通过堆溢出或任意写伪造一个 _IO_FILE_plus 结构体，并控制其 vtable 指针指向伪造的 vtable。\n3.  伪造 vtable 中将 __overflow（或其他会被调用的函数）替换为 system 或 one_gadget。\n4.  触发对伪造 FILE 的操作（如 fclose 伪造的 FILE），即可劫持控制流。\n\n关键控制点：\n- _flags 字段：需满足一定条件（如设置 _IO_CURRENTLY_PUTTING 等标志位）才能走到调用 vtable 的路径。\n- _IO_write_base / _IO_write_ptr / _IO_buf_base / _IO_buf_end：控制缓冲区相关字段，使 _IO_OVERFLOW 被调用。\n- vtable 指针：指向伪造的 vtable，glibc 2.24+ 引入 vtable 校验（_IO_vtable_check），需将伪造 vtable 放在 _IO_file_jumps 附近或使用 _IO_str_jumps 绕过。\n- _mode 字段等用于绕过 vtable 范围检查。\n\n经典手法：利用 _IO_str_overflow 中调用 _IO_str_jumps 的路径，或通过 House of Apple 系列在新版本 glibc 中实现 getshell。",
+      "explanation": "FSOP 的本质是通过控制 FILE 结构体的 vtable 劫持虚函数调用。由于 fclose 会遍历全局 _IO_list_all 链表处理所有 FILE，若能将伪造 FILE 链入该链表或直接控制某个已存在的 FILE，便可在程序退出或 fflush 时触发。glibc 2.24 后的 vtable 校验使得伪造 vtable 需满足地址范围约束，催生了 _IO_str_jumps、House of Apple 等绕过技术。"
     },
     {
       "id": "q11",
       "type": "qa",
       "difficulty": "hard",
-      "topic": "GOT/PLT",
-      "question": "某 64 位程序开启 Full RELRO，存在栈溢出但无输出函数可直接泄露 libc。程序中调用了 atoi 处理菜单输入。请简述一种在不修改 GOT 的情况下获取 shell 的利用思路。",
-      "answer": "思路：利用栈溢出构造 ret2libc 或 ret2csu。\n\n1. 由于 Full RELRO 无法篡改 GOT，转向 ROP。\n2. 若程序有输出函数（如 write/puts），先通过 ROP 调用 puts@plt 泄露某个 libc 函数的 GOT 地址，计算 libc 基址。\n3. 若完全无输出函数，可利用 ret2csu（__libc_csu_init 中的通用 gadget）构造 write 调用进行泄露，或利用栈迁移 + atoi 的特性。\n4. 泄露基址后，用 pop rdi;ret 加载 /bin/sh 地址，调用 system。\n5. 注意 64 位栈对齐，system 前加 ret gadget。",
-      "explanation": "Full RELRO 关闭了 GOT 劫持这条路，但栈溢出 + ROP 仍然可行。核心是先泄露 libc（通过输出函数或 ret2csu），再 ret2libc。atoi 常作为菜单题输入转换函数，本身不是利用点，但可作为泄露链的一环。"
+      "topic": "内核利用基础",
+      "question": "内核利用中，SMEP 和 SMAP 分别防御什么攻击？请简述各自的绕过思路。",
+      "answer": "SMEP（Supervisor Mode Execution Prevention）和 SMAP（Supervisor Mode Access Prevention）是 CPU 级别的内核保护机制：\n\nSMEP：\n- 防御：阻止内核态（ring 0）执行用户态（ring 3）页中的代码，使传统的 ret2usr（内核跳转执行用户态 shellcode）失效。\n- 绕过思路：\n  a) ret2dir：利用内核直接物理映射区（physmap/direct mapping area）中存在用户态数据的物理页副本，在内核态执行该副本中的代码（physmap 通常可执行）。\n  b) 内核 ROP：在内核自身代码段中寻找 gadget 构造 ROP 链，不依赖用户态代码执行。\n\nSMAP：\n- 防御：阻止内核态访问用户态页的数据，使内核无法直接读写用户态缓冲区。\n- 绕过思路：\n  a) ret2dir 同样适用：在内核直接映射区找到用户数据的副本，内核访问该副本而非用户态虚拟地址。\n  b) 利用 KPTI 间隙或特定代码路径中显式启用用户态访问的指令（如 stac/clac 临时关闭 SMAP）。\n  c) 在内核堆中布置数据，避免访问用户态。\n\n实战中通常组合使用：先通过 ret2dir 绕过 SMEP 执行 ROP，ROP 链中调用 commit_creds(prepare_kernel_cred(0)) 提升权限，再返回用户态。",
+      "explanation": "SMEP/SMAP 将用户态与内核态的执行和访问彻底隔离，是现代内核利用的主要障碍。ret2dir 的核心思想是利用 Linux 内核将所有物理内存直接映射到内核虚拟地址空间（physmap）这一特性——用户态数据的物理页在 physmap 中有可读可执行的副本，内核态可以合法访问该副本。配合 KASLR 绕过（泄露 physmap 基址）即可实现完整利用链。"
     }
   ]
 }
