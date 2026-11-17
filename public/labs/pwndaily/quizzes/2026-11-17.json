@@ -1,0 +1,132 @@
+{
+  "date": "2026-11-17",
+  "title": "Pwn 每日一练 · Day 001",
+  "topics": ["保护机制", "栈溢出", "GOT/PLT", "ret2libc", "格式化字符串"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于 NX (No-Execute) 保护，下列说法正确的是？",
+      "options": [
+        "NX 开启后栈和堆上的数据均不可作为代码执行",
+        "NX 可以阻止栈溢出漏洞的发生",
+        "NX 开启后无法使用 ret2libc 进行利用",
+        "NX 只保护栈段，不保护堆段"
+      ],
+      "answer": 0,
+      "explanation": "NX 将栈、堆等数据段标记为不可执行，阻止 shellcode 直接执行。它不阻止漏洞本身，也不影响 ret2libc 等返回导向利用（ROP）。"
+    },
+    {
+      "id": "q2",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "GOT/PLT",
+      "question": "在 Partial RELRO 保护下，下列哪个节仍然可写？",
+      "options": [".got", ".got.plt", ".plt", ".text"],
+      "answer": 1,
+      "explanation": "Partial RELRO 下 .got 只读、.got.plt 可写，可通过篡改 .got.plt 中的函数地址实现 GOT 劫持。Full RELRO 下两者均只读。"
+    },
+    {
+      "id": "q3",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "checksec 输出中，Stack: Canary found 表示程序启用了______保护。",
+      "answer": "Canary",
+      "explanation": "Canary（栈金丝雀）在返回地址前插入随机值，函数返回前校验，若被覆盖则触发 __stack_chk_fail 终止程序，防止普通栈溢出覆盖返回地址。"
+    },
+    {
+      "id": "q4",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "栈溢出",
+      "question": "32位程序通过______系统调用号（eax）触发 write，向标准输出写数据时 ebx 应设为______。",
+      "answer": ["4;1", "4，1"],
+      "explanation": "32位 Linux write 系统调用号为 4，ebx=1 表示标准输出(stdout)，ecx=缓冲区地址，edx=长度。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "格式化字符串",
+      "question": "格式化字符串漏洞中，要向地址 0x0804a000 写入值 0x1234，最适合使用的格式说明符是？",
+      "options": [
+        "%s",
+        "%n",
+        "%x",
+        "%p"
+      ],
+      "answer": 1,
+      "explanation": "%n 将当前已输出字符数写入对应参数指向的地址，是格式化字符串写原语。%hn 写 2 字节、%hhn 写 1 字节，更适合精确覆盖。"
+    },
+    {
+      "id": "q6",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "ret2libc",
+      "question": "64位 System V ABI 中，函数前 6 个整型参数依次通过 ______、______、______、rcx、r8、r9 寄存器传递。",
+      "answer": "rdi;rsi;rdx",
+      "explanation": "64位传参顺序：rdi、rsi、rdx、rcx、r8、r9。构造 ROP 链时需用 pop rdi;ret 等 gadget 将参数从栈加载到对应寄存器。"
+    },
+    {
+      "id": "q7",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "ret2libc",
+      "question": "64位 ROP 链中，调用 system 前出现 movaps 指令段错误，最可能的原因是？",
+      "options": [
+        "libc 版本不匹配",
+        "栈未 16 字节对齐",
+        "GOT 表被篡改",
+        "Canary 校验失败"
+      ],
+      "answer": 1,
+      "explanation": "movaps 要求内存操作数 16 字节对齐。64位 ABI 规定函数调用前 rsp 需 16 字节对齐，system 内部 movaps 崩溃通常是 ret 对齐缺失导致。修复方法是在 system 前加一个 ret gadget。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "ret2libc",
+      "question": "32位程序存在栈溢出，已通过 puts 泄露 libc 基址。请用文字描述调用 system(\"/bin/sh\") 的 ROP 链栈布局（从低地址到高地址）。",
+      "answer": "padding + system_addr + ret_addr + binsh_addr\n\n其中 padding 覆盖到返回地址位置；system_addr 为 libc 中 system 函数地址；ret_addr 为调用后的返回地址（可填 main 或 exit）；binsh_addr 为 libc 中 \"/bin/sh\" 字符串地址。32位 cdecl 约定参数从右往左压栈，因此参数在返回地址之后。",
+      "explanation": "32位 cdecl 调用约定通过栈传参。执行 ret 后 eip 指向 system，此时栈顶是 ret_addr，再往下是参数。因此布局为：padding → system → 返回地址 → 参数。"
+    },
+    {
+      "id": "q9",
+      "type": "choice",
+      "difficulty": "hard",
+      "topic": "格式化字符串",
+      "question": "利用格式化字符串漏洞进行任意写时，若目标写入较大数值导致输出过长，应优先采用哪种策略？",
+      "options": [
+        "使用 %n 一次性写入全部字节",
+        "使用 %hhn 分多次单字节写入",
+        "放弃写入改用 %s 泄露",
+        "增大 padding 直接用 %n"
+      ],
+      "answer": 1,
+      "explanation": "%n 写入值等于已输出字符数，写大数值需输出大量字符效率低。%hhn 每次写 1 字节，可分 4/8 次分别写入每个字节，通过多次格式化或一次链中多个 %hhn 实现，是任意写的标准做法。"
+    },
+    {
+      "id": "q10",
+      "type": "fill",
+      "difficulty": "hard",
+      "topic": "栈迁移",
+      "question": "栈迁移利用中，通常利用 leave; ret  gadget 将 rsp 切换到可控区域。leave 指令等价于 ______; ______。",
+      "answer": "mov rsp, rbp; pop rbp",
+      "explanation": "leave 等价于 mov rsp, rbp（栈顶指向旧栈帧基址）然后 pop rbp（恢复 rbp）。通过控制 rbp 的值，配合 ret 可将 rsp 迁移到攻击者可控的内存区域，从而在受限溢出下布置更长 ROP 链。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "GOT/PLT",
+      "question": "某 64 位程序开启 Full RELRO，存在栈溢出但无输出函数可直接泄露 libc。程序中调用了 atoi 处理菜单输入。请简述一种在不修改 GOT 的情况下获取 shell 的利用思路。",
+      "answer": "思路：利用栈溢出构造 ret2libc 或 ret2csu。\n\n1. 由于 Full RELRO 无法篡改 GOT，转向 ROP。\n2. 若程序有输出函数（如 write/puts），先通过 ROP 调用 puts@plt 泄露某个 libc 函数的 GOT 地址，计算 libc 基址。\n3. 若完全无输出函数，可利用 ret2csu（__libc_csu_init 中的通用 gadget）构造 write 调用进行泄露，或利用栈迁移 + atoi 的特性。\n4. 泄露基址后，用 pop rdi;ret 加载 /bin/sh 地址，调用 system。\n5. 注意 64 位栈对齐，system 前加 ret gadget。",
+      "explanation": "Full RELRO 关闭了 GOT 劫持这条路，但栈溢出 + ROP 仍然可行。核心是先泄露 libc（通过输出函数或 ret2csu），再 ret2libc。atoi 常作为菜单题输入转换函数，本身不是利用点，但可作为泄露链的一环。"
+    }
+  ]
+}
