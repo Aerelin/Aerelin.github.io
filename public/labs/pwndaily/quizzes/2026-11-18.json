@@ -1,0 +1,131 @@
+{
+  "date": "2026-11-18",
+  "title": "Pwn 每日一练 · Day 003",
+  "topics": ["保护机制", "栈溢出", "ret2libc", "ROP链构造", "shellcode", "IDA逆向", "栈迁移", "堆利用", "GOT/PLT", "one_gadget"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于 NX (No-eXecute) / DEP 保护，下列说法正确的是？",
+      "options": [
+        "NX 开启后栈和堆上的数据都不可执行，因此无法再利用栈溢出",
+        "NX 可以从根本上防止栈溢出漏洞的发生",
+        "NX 将栈、堆等数据段标记为不可执行，使传统栈上 shellcode 执行失效",
+        "NX 和 Canary 是同一种保护机制的不同名称"
+      ],
+      "answer": 2,
+      "explanation": "NX/DEP 的作用是将栈、堆等数据段标记为不可执行，使攻击者无法直接执行溢出到栈上的 shellcode。但 NX 并不阻止溢出本身的发生，只是改变了利用方式——攻击者需改用 ROP、ret2libc、ret2syscall 或 mprotect 修改页权限等手段绕过。Canary（栈金丝雀）是检测栈溢出的另一独立机制，与 NX 不同。"
+    },
+    {
+      "id": "q2",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于 RELRO 保护的三个等级，下列说法错误的是？",
+      "options": [
+        "No RELRO：GOT 表完全可写，可直接篡改 GOT 表项劫持控制流",
+        "Partial RELRO：.got 节只读，.got.plt 节可写，可篡改延迟绑定的 GOT 项",
+        "Full RELRO：所有 GOT 表项在加载时完成绑定并设为只读，无法通过篡改 GOT 劫持",
+        "Full RELRO 开启后无法通过读取 GOT 表项泄露 libc 地址"
+      ],
+      "answer": 3,
+      "explanation": "Full RELRO 只防御对 GOT 表的'写'操作（GOT hijacking），不防御'读'。GOT 表项中仍存储着 libc 函数的真实运行时地址，通过 puts/write/printf 等输出函数读取 GOT 表项内容，依然可以泄露 libc 基址。因此 Full RELRO 下 ret2libc 仍然可行，只是无法篡改 GOT。"
+    },
+    {
+      "id": "q3",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "栈溢出",
+      "question": "栈金丝雀（Canary）保护在函数返回地址之前插入一个随机值，函数返回前校验其完整性。在 x86-64 Linux 中，Canary 值通常存储在 fs 段寄存器偏移 ______ 处；其最低字节通常为 ______（用于防止字符串溢出覆盖）。",
+      "answer": ["0x28;0x00", "0x28，0x00", "0x28;\\x00"],
+      "explanation": "x86-64 Linux 中 Canary 存储在 fs:0x28（32 位为 gs:0x14）。Canary 的最低字节固定为 0x00，这是为了防止字符串函数（如 strcpy、gets）在溢出时顺带覆盖 Canary——因为字符串函数遇到 \\x00 会停止复制，从而保护 Canary 不被普通字符串溢出破坏。泄露 Canary 常用格式化字符串直接读取，或利用溢出逐字节爆破（利用 \\x00 终止符逐位确认）。"
+    },
+    {
+      "id": "q4",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "shellcode",
+      "question": "编写 Linux x86-64 下 execve(\"/bin/sh\", NULL, NULL) 的 shellcode 时，系统调用号 execve 为 ______，需通过 ______ 寄存器传递，三个参数依次放入 rdi、rsi、rdx，最后使用 ______ 指令触发系统调用。",
+      "answer": ["59;rax;syscall", "59，rax，syscall"],
+      "explanation": "Linux x86-64 系统调用号 execve = 59（0x3b），通过 rax 传递。参数遵循 System V ABI：rdi=pathname（\"/bin/sh\" 地址）、rsi=argv（NULL）、rdx=envp（NULL），最后 syscall 触发。注意与 32 位区分：32 位 execve 调用号为 11，通过 int 0x80 触发，参数用 ebx/ecx/edx 传递。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中分析一个已 strip（无符号表）的 ELF 程序时，最快速定位 main 函数的方法是？",
+      "options": [
+        "在 Strings 窗口（Shift+F12）搜索 \"main\" 字符串并交叉引用",
+        "从程序入口点 _start 跟踪，找到传给 __libc_start_main 的第一个参数",
+        "直接跳到 0x400000 地址处",
+        "查看 .text 段的第一个函数"
+      ],
+      "answer": 1,
+      "explanation": "strip 后的程序没有符号表，无法直接通过名称找到 main。标准方法是：定位入口点 _start，其中会调用 __libc_start_main(main, argc, argv, init, fini, rtld_fini, stack_end)。main 是 __libc_start_main 的第一个参数，在 64 位下通过 rdi 传递，32 位下压在栈上。在 IDA 中进入 start 函数，找到 call __libc_start_main，其第一个参数即 main 的地址。"
+    },
+    {
+      "id": "q6",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "ROP链构造",
+      "question": "关于 32 位和 64 位 Linux ROP 链构造的差异，下列说法正确的是？",
+      "options": [
+        "两者都完全通过栈传递参数，构造方式完全相同",
+        "32 位通过 rdi/rsi/rdx 寄存器传参，64 位通过栈传参",
+        "32 位 cdecl 约定参数从右向左全部压栈；64 位 System V 约定前 6 个整型参数通过 rdi/rsi/rdx/rcx/r8/r9 传递",
+        "64 位 ROP 链无需考虑栈对齐（16 字节对齐）问题"
+      ],
+      "answer": 2,
+      "explanation": "32 位 cdecl：所有参数从右向左依次压栈，ROP 链结构为 [函数地址][返回地址][arg1][arg2][arg3]。64 位 System V：前 6 个整型参数依次放入 rdi/rsi/rdx/rcx/r8/r9，需用 pop rdi; ret 等 gadget 将参数从栈加载到寄存器。此外 64 位调用前需保证 rsp 16 字节对齐（system 等函数要求 rsp%16==8），否则 movaps 等指令会崩溃，常在目标函数前加一个 ret gadget 微调对齐。"
+    },
+    {
+      "id": "q7",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "ret2libc",
+      "question": "64 位程序使用 puts 泄露某 libc 函数 GOT 表项内容的 ROP 链结构为：padding + [pop rdi; ret gadget] + ______ + puts@plt + 返回地址。其中用于加载参数的 gadget 助记符为 ______。",
+      "answer": ["目标GOT地址;pop rdi; ret", "目标函数GOT地址，pop rdi; ret"],
+      "explanation": "64 位 puts 的参数（要输出的字符串地址）通过 rdi 传递。ROP 链先执行 pop rdi; ret，将栈上紧跟其后的目标 GOT 地址弹入 rdi，然后调用 puts@plt 输出该 GOT 表项中存储的 libc 函数真实地址，最后返回到 main 重新执行以便发送第二阶段 payload。泄露后用 leak_addr - libc.sym['puts'] 得到 libc 基址。注意 puts 输出遇 \\x00 停止，若 GOT 地址含空字节需改用 write 泄露。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "栈迁移",
+      "question": "简述栈迁移（Stack Pivoting）的原理、常用 gadget 及典型适用场景。",
+      "answer": "栈迁移原理：\n当栈溢出空间不足以放下完整 ROP 链时，将栈指针 rsp 转移到攻击者可控的另一块内存区域（如 .bss 段、mmap 区域、堆），在更大空间内布置完整 ROP 链。\n\n常用 gadget：\n1. leave; ret（最经典）：等价于 mov rsp, rbp; pop rbp; ret。攻击者通过溢出覆盖 saved rbp 为目标地址，函数返回执行 leave 时 rsp 被设为目标地址，ret 从该地址取指令跳转。\n2. xchg rsp, reg; ret 或 mov rsp, reg; ret：直接将 rsp 设为某寄存器值，需提前在寄存器中布置好目标地址。\n3. pop rsp; ret：将栈顶值弹入 rsp。\n\n适用场景：\n- 栈溢出长度有限，无法容纳完整 ROP 链；\n- 开启 Canary 但能控制或泄露 rbp；\n- 程序存在可读可写且可控的内存区域，可通过 read 等函数预先写入 ROP 链。\n\n关键：迁移前需在目标地址处预先布置好完整 ROP 链，并确保 ret 能正确跳到链首。",
+      "explanation": "栈迁移的本质是把'ROP 的执行舞台'从溢出受限的栈搬到可控的大内存区。leave; ret 利用了函数 epilogue 的固有逻辑——攻击者只需覆盖 saved rbp，函数返回时 rsp 就会被重定向。配合 read 预先在 .bss 段布置完整 ROP 链，即可绕过栈空间限制。注意迁移后新栈地址必须可写且已填充好数据，否则 ret 会取到非法地址崩溃。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "堆利用",
+      "question": "简述 glibc tcache 中 double free 的检测机制，以及在 glibc 2.31 中如何利用 double free 实现任意地址分配。",
+      "answer": "检测机制：\n- tcache（glibc 2.29+）：free 时检查待释放 chunk 的 key 字段（位于 fd 位置）。若该值等于 tcache_perthread_struct 地址，说明该 chunk 已在 tcache 中，检测到 double free 并报错 \"free(): double free detected in tcache 2\"。\n- 但早期 tcache（2.27-2.31）的 key 检查只比对 tcache 链表头，链表中间的 chunk 可被重复 free。\n\n利用思路（glibc 2.31）：\n1. 申请 3 个同大小 chunk A、B、C（落入 tcache 大小范围，如 0x90）。\n2. 依次 free(A)、free(B)、free(A)：第二次 free(A) 时 A 不在链表头（链表头是 B），绕过检测。tcache 链表变为 A→B→A（A 出现两次）。\n3. 申请一次拿回 A，通过 edit 将 A 的 fd 改为目标地址（如 __free_hook）。\n4. 再申请两次：第一次拿回 B，第二次 tcache 返回伪造的目标地址，实现任意地址分配。\n5. 向该地址写入 system，再 free 一个内容为 \"/bin/sh\" 的 chunk 即 getshell。\n\n注意：glibc 2.32+ 引入 safe-linking，fd 与 (heap_base >> 12) 异或加密，需先泄露 heap 基址才能正确伪造 fd。",
+      "explanation": "tcache double free 的核心在于利用其检测只检查链表头的设计缺陷，通过特定 free 顺序使同一 chunk 在链表中出现两次。拿到重复 chunk 后即可修改其 fd 实现 tcache poisoning，将后续分配指向任意地址。glibc 版本决定具体手法：2.31 无 safe-linking 可直接写 fd；2.32+ 需泄露 heap 基址计算异或密钥；2.34+ 移除 __free_hook 后需改用 IO_FILE FSOP 等替代方案。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "GOT/PLT",
+      "question": "某 64 位 ELF 程序 checksec 结果为：RELRO: Partial RELRO，PIE: 开启，NX: 开启，Canary: 开启。程序存在栈溢出但 Canary 未知，且程序导入了 read(0, bss_buf, 0x100) 和 puts。请设计一个完整的 getshell 利用链，说明各阶段目的及 payload 结构。",
+      "answer": "利用链设计（Canary 泄露 + PIE/ libc 泄露 + ret2libc）：\n\nStage 1：泄露 Canary\n- 若存在格式化字符串漏洞，直接用 %p 或 %N$p 读取栈上 Canary 值（64 位位于 fs:0x28，栈上 saved rbp 前 8 字节）。\n- 若无格式化字符串，利用栈溢出逐字节爆破：每次覆盖 Canary 的一个字节，程序崩溃则猜错，继续尝试；利用 Canary 末字节为 \\x00 的特性从高字节向低字节爆破。\n\nStage 2：泄露程序基址（PIE）和 libc 基址\n- 构造 ROP：padding + Canary + saved_rbp + pop_rdi;ret + puts_got + puts_plt + main_addr\n- 目的：调用 puts 输出 puts@got 中的 libc 真实地址，再返回 main 重新执行。\n- 计算：libc_base = leak - libc.sym['puts']；PIE 基址可通过泄露 main 地址减去符号偏移得到。\n\nStage 3：getshell\n- 构造 ROP：padding + Canary + saved_rbp + ret_gadget + pop_rdi;ret + binsh_addr + system_addr\n- binsh_addr = libc_base + next(libc.search(b'/bin/sh'))\n- system_addr = libc_base + libc.sym['system']\n- ret_gadget（单独一个 ret）用于 16 字节栈对齐，使 system 内部不崩溃。\n- 也可用 one_gadget 替代（需验证约束条件）。\n\npayload 结构（Stage 2 示例）：\n```python\noffset = 0x28  # buf 到 Canary 的距离\npayload = b'A' * offset\npayload += p64(canary)\npayload += b'B' * 8          # saved rbp\npayload += p64(pop_rdi_ret)\npayload += p64(elf.got['puts'])\npayload += p64(elf.plt['puts'])\npayload += p64(main_addr)    # 返回 main 重新执行\n```",
+      "explanation": "该利用链是 CTF-Pwn 最经典的套路组合。Canary 泄露是前提（绕过栈保护），PIE 基址泄露解决程序地址随机化，libc 地址泄露解决 ASLR。Partial RELRO 下 .got.plt 可写但本题未使用 GOT 篡改，而是通过读取 GOT 泄露地址。关键点：①Canary 位置在 saved rbp 前 8 字节；②调用 system 前需 16 字节栈对齐，可在 system 前插一个 ret gadget；③返回 main 可让程序重新运行以发送第二阶段 payload。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "one_gadget",
+      "question": "one_gadget 在某 libc 2.31 中找到 3 个候选 gadget，约束分别为：① [rsp+0x70] == NULL；② rax == NULL 且 [rsp+0x70] == NULL；③ r12 == NULL 且 [rsp+0x80] == NULL。某 64 位程序溢出点在 read(0, buf, 0x200)，buf 距 rbp 为 0x20，无 Canary。请分析哪个 gadget 最可能成功，并说明如何在 GDB 中验证约束。",
+      "answer": "分析：\nread 调用时栈布局（从低到高）：buf[0x20] → saved_rbp[8] → 返回地址。溢出覆盖：padding(0x20) + saved_rbp(8) + 返回地址 + 后续可控数据。\n当返回地址跳转到 one_gadget 时，rsp 指向返回地址之后的位置（即原 rsp + 8），该位置之后的栈内容完全由 payload 控制（read 可读 0x200 字节，远超 0x28）。\n\n候选评估：\n① [rsp+0x70] == NULL：从 buf 到 rsp 的距离为 0x20 + 8 + 8 = 0x30，[rsp+0x70] 对应 buf+0xa0 处，完全在 payload 可控范围内，直接填 8 字节 0 即可满足。最易成功。\n② rax == NULL：read 成功返回时 rax = 实际读取字节数（非 0），无法通过栈溢出直接改 rax，需额外 pop rax; ret gadget 清零，增加复杂度。\n③ r12 == NULL：r12 是被调用者保存寄存器，read 调用前后通常不为 NULL，且无法通过栈溢出直接控制，需额外 pop r12; ret gadget，较难。\n\n结论：选择候选 ①。\n\nGDB 验证方法：\n1. 在 one_gadget 地址处下断点：b *0x<gadget_addr>\n2. 运行 payload 到断点，检查：\n   - x/gx $rsp+0x70   确认值为 0x0\n   - 若不为 0，调整 payload 中对应偏移处填充为 p64(0)\n3. 继续执行 c，观察是否成功 getshell。\n\npayload 示例：\n```python\npayload = b'A' * 0x20      # 填充 buf\npayload += p64(0)          # saved rbp\npayload += p64(one_gadget) # 返回地址 → gadget\n# gadget 执行时 rsp 指向此处之后\npayload += b'C' * 0x70     # 填充到 rsp+0x70 之前\npayload += p64(0)          # [rsp+0x70] = NULL，满足约束\n```\n\n注意：rsp 的确切偏移需在 GDB 中实测确认，因为函数调用约定和栈布局可能影响 gadget 执行时的 rsp 值。",
+      "explanation": "one_gadget 利用的关键是约束条件满足。选择约束最少（通常只需一个栈位置为 NULL）且该位置可通过溢出控制的 gadget 最稳妥。read 的返回值会使 rax 非零，涉及 rax == NULL 的约束需额外 gadget 处理。GDB 动态调试是验证约束的最可靠手段——在 gadget 处断点，逐一检查寄存器和栈内存，不满足则调整 payload 对应位置的填充内容。注意 gadget 执行时 rsp 的值取决于具体调用栈，必须实测确认偏移量。"
+    }
+  ]
+}
