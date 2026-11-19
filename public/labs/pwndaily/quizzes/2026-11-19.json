@@ -1,0 +1,126 @@
+{
+  "date": "2026-11-19",
+  "title": "Pwn 每日一练 · Day 004",
+  "topics": ["堆利用", "pwntools", "格式化字符串", "GDB调试", "栈溢出", "ret2libc", "内核利用基础", "ROP链构造", "IO_FILE"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "堆利用",
+      "question": "glibc 堆中 chunk 的 size 字段最低 3 位是标志位，下列对应关系正确的是？",
+      "options": [
+        "bit0=PREV_INUSE, bit1=IS_MMAPPED, bit2=NON_MAIN_ARENA",
+        "bit0=IS_MMAPPED, bit1=PREV_INUSE, bit2=NON_MAIN_ARENA",
+        "bit0=NON_MAIN_ARENA, bit1=PREV_INUSE, bit2=IS_MMAPPED",
+        "这 3 位表示 chunk 的真实大小，不是标志位"
+      ],
+      "answer": 0,
+      "explanation": "glibc chunk 的 size 字段低 3 位为标志位：bit0=PREV_INUSE（前一个 chunk 是否在使用）、bit1=IS_MMAPPED（是否 mmap 分配）、bit2=NON_MAIN_ARENA（是否属于非主 arena）。真实块大小 = size & ~0x7。堆利用时若要伪造 chunk 需正确设置这些标志位，否则 free/合并时会触发校验报错。"
+    },
+    {
+      "id": "q2",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 中关于 ELF 对象的 elf.plt 和 elf.got 属性，下列说法正确的是？",
+      "options": [
+        "elf.plt['puts'] 返回 libc 中 puts 的真实运行时地址",
+        "elf.got['puts'] 返回存储 puts 真实地址的 GOT 表项地址",
+        "elf.plt 和 elf.got 返回的地址完全相同",
+        "elf.symbols['main'] 返回 main 的 GOT 表项地址"
+      ],
+      "answer": 1,
+      "explanation": "elf.plt['func'] 返回程序内 PLT 跳板地址（调用该函数时经此跳转，再查 GOT）；elf.got['func'] 返回 GOT 表项地址，该表项运行时存储 libc 函数真实地址，常用于泄露 libc 基址；elf.symbols['main'] 返回程序内符号 main 的虚拟地址。即使开启 Full RELRO，GOT 只读不可写，但仍可读取 GOT 表项内容用于泄露。"
+    },
+    {
+      "id": "q3",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "格式化字符串",
+      "question": "格式化字符串中，将'当前已输出的字符数'写入到对应参数所指向地址的格式说明符是 ______；若要写入 8 字节（long 类型）整数，应使用 ______。",
+      "answer": ["%n;%ln", "%n，%ln"],
+      "explanation": "%n 不输出可见内容，而是将截至目前已输出的字符数（按 int，通常 4 字节）写入对应参数指向的地址；%ln 写入 long（64 位下 8 字节）。结合 %N$n 可向任意地址写入指定数值，是格式化字符串漏洞实现任意写的核心。写入值的大小通过前面的输出宽度控制，例如 %100c%5$n 可写入 100。"
+    },
+    {
+      "id": "q4",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "GDB调试",
+      "question": "GDB 调试中，查看进程各内存区域的基址与权限（用于定位 libc、heap、栈地址）的 pwndbg 命令是 ______；查看所有通用寄存器当前值的命令简写是 ______。",
+      "answer": ["vmmap;i r", "vmmap，info registers"],
+      "explanation": "vmmap 是 pwndbg/peda 等插件提供的命令，显示进程虚拟内存映射（地址范围、权限 rwxp、所属文件），常用于确认 libc/heap/栈的基址及是否可执行。info registers（简写 i r）显示所有寄存器当前值；指定单个寄存器可用 i r rax。若未装插件，原生 GDB 可用 info proc mappings 替代 vmmap。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "栈溢出",
+      "question": "pwntools 中用于生成可定位的循环字符串，从而快速确定栈溢出覆盖到返回地址的偏移量的函数是？",
+      "options": ["cyclic", "pattern", "offset", "findoffset"],
+      "answer": 0,
+      "explanation": "cyclic(n) 生成一个任意子串唯一的循环字符串。将其作为输入触发溢出后，程序崩溃时的 RIP/返回值对应字符串中的某段，用 cyclic_find(崩溃地址) 即可精确算出偏移量，比逐字节尝试高效得多。配合 context.arch 设置可生成对应字节序的模式。"
+    },
+    {
+      "id": "q6",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "格式化字符串",
+      "question": "关于格式化字符串漏洞的利用，下列说法错误的是？",
+      "options": [
+        "利用前需先确定格式化字符串在栈上的起始偏移（即第几个参数）",
+        "利用 %N$p 可以读取任意偏移处的栈数据",
+        "利用 %N$n 可以向第 N 个参数指向的地址写入已输出字符数",
+        "格式化字符串漏洞只能用于信息泄露，无法实现任意地址写"
+      ],
+      "answer": 3,
+      "explanation": "格式化字符串漏洞既能读也能写：读用于泄露（%p/%s/%x 泄露栈、libc、Canary 等），写用于劫持（%n/%hn 向指定地址写值）。利用步骤：①输入 AAAA 后跟一串 %p 定位偏移；②用 %N$p 读取目标地址内容完成泄露；③将目标地址放在栈上可控位置，用 %N$n 实现任意写。pwntools 的 fmtstr_payload 可自动构造写入 payload。"
+    },
+    {
+      "id": "q7",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "堆利用",
+      "question": "glibc 2.32+ 引入的 safe-linking 机制对 tcache/fastbin 中被释放 chunk 的 fd 指针进行异或加密，加密方式为：存储值 = 原 fd XOR (______ >> 12)；因此在利用 tcache poisoning 伪造 fd 前，必须先泄露 ______。",
+      "answer": ["存放fd的地址;heap基址", "chunk地址，堆基址"],
+      "explanation": "safe-linking 公式：存入时 encrypted = ptr ^ (存放该指针的地址 >> 12)，读出时 ptr = encrypted ^ (存放地址 >> 12)。对 tcache chunk 的 fd 字段，存放地址 ≈ chunk 地址，故密钥 ≈ heap 基址 >> 12。要伪造 fd 指向目标地址，需写入 target ^ (chunk_addr >> 12)，因此必须先泄露 heap 基址或当前 chunk 地址（可通过 UAF 读取 fd 反推）。safe-linking 只加密指针不阻止读取，故可先泄露再伪造。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "ret2libc",
+      "question": "某 64 位程序存在栈溢出，但程序未导入 puts/printf 等任何输出函数，也无格式化字符串漏洞，仅导入了 read。在这种情况下如何泄露 libc 地址？请列举可行思路。",
+      "answer": "泄露 libc 地址的本质是需要一个'输出原语'——能把内存内容发送出来的能力。完全没有标准输出函数时，可尝试以下思路：\n\n1. 检查 write 系统调用：若程序导入了 write（即便没有 puts/printf），直接 ROP 调用 write(1, got_addr, 8) 即可泄露，write 是最通用的泄露函数。\n\n2. DynELF：pwntools 提供的 DynELF 类，利用一个可控的任意读/输出原语（哪怕是 write 或程序内非标准输出函数），逐个字节解析 libc 符号，无需预先知道 libc 版本。但仍需至少一个能触发输出的原语。\n\n3. 寻找间接输出路径：审计程序是否存在任何可触发的回显行为（菜单打印、错误信息、日志函数、send 等），很多'看似无输出'的程序其实有可用的输出路径。\n\n4. 直接篡改 GOT 而非泄露：若开启 Partial RELRO 且能调用 read 向 GOT 写入，可考虑把某个高频调用函数（如 atoi）的 GOT 改写为 system，但这需要已知 system 地址，仍绕不开泄露或爆破。\n\n5. 爆破 ASLR：libc 基址 64 位下通常只随机化 12-16 位（页对齐），可暴力尝试，但远程成功率低、耗时，仅在别无他法时考虑。\n\n结论：实战中应先全面审计导入表和程序行为，优先找 write 或任何可触发的输出路径；完全无输出时利用难度极大。",
+      "explanation": "泄露 libc 依赖输出原语。没有 puts/printf 不代表没有输出能力——write 是最常被忽略但最通用的泄露函数。DynELF 是无需 libc 版本即可解析符号的利器，但仍需一个读原语驱动。完全无任何输出时，格式化字符串、write、DynELF 均不可用，只能爆破 ASLR 或寻找其他漏洞原语，这类题目通常设计上会隐含一条输出路径。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "内核利用基础",
+      "question": "简述内核利用中绕过 KASLR 的常见方法，以及完成权限提升的核心函数调用链。",
+      "answer": "绕过 KASLR（内核地址空间布局随机化）的常见方法：\n\n1. 信息泄露：利用内核漏洞读取内核内存，泄露出一个已知内核符号的地址，用泄露地址减去该符号的固定偏移得到内核基址。泄露源包括：/proc/kallsyms（若可读）、任意读漏洞、dmesg/printk 输出的指针、未初始化数据泄露等。\n\n2. ret2dir（直接映射区）：利用 Linux 内核将所有物理内存直接映射到内核虚拟地址空间（physmap 直接映射区）这一特性，在直接映射区找到用户态数据的物理页副本。内核态可以合法访问该副本，从而无需精确知道内核代码地址也能执行 ROP 或访问数据。\n\n3. 爆破：KASLR 随机化位数有限（x86-64 通常 9 位物理页随机 + 虚拟地址随机），可暴力尝试内核基址，但受时间和崩溃次数限制。\n\n4. 固定映射跳板：某些未随机化的区域（如部分系统仍保留的 vsyscall 页）地址固定，可作为控制流跳板。\n\n提权核心调用链：\ncommit_creds(prepare_kernel_cred(0))\n- prepare_kernel_cred(0)：基于 init 进程的 cred 生成一个 root 权限的 cred 结构体。\n- commit_creds()：将当前进程 task_struct->cred 替换为新的 root cred，完成提权。\n\n提权后必须安全返回用户态：构造 swapgs + iretq（64 位）返回帧，恢复用户态的 CS/SS/RFLAGS/RIP/RSP，否则会触发 GP 故障，在开启 SMEP/SMAP 的系统中尤其关键。",
+      "explanation": "KASLR 使内核代码/数据地址随机化，内核 ROP 前必须先泄露内核基址。commit_creds(prepare_kernel_cred(0)) 是 Linux 内核提权的标准套路，几乎所有内核漏洞利用的最终目标都是调用这两个函数。返回用户态时需正确构造 iret 帧恢复用户态上下文，现代内核中常用 swapgs_restore_regs_and_return_to_usermode 这类内核自带 gadget 完成返回。KASLR 绕过与 SMEP/SMAP 绕过通常组合进行：ret2dir 同时绕开 KASLR（用固定映射区）和 SMEP（在内核映射区执行）。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "ROP链构造",
+      "question": "当程序中找不到 pop rdx; ret 等控制 rdx 的 gadget 时，可利用 __libc_csu_init 中的通用 gadget（ret2csu）控制 rdi/rsi/rdx。请简述 ret2csu 的原理与利用步骤。",
+      "answer": "ret2csu 原理：\n__libc_csu_init 是 64 位动态链接程序编译时链入的函数，其中存在两段可组合的通用 gadget，能通过 pop 控制 rbx、rbp、r12、r13、r14、r15 六个寄存器，并最终通过 call qword [r12 + rbx*8] 调用任意 GOT 中的函数，调用前将参数设置为 rdi=r15、rsi=r14、rdx=r13（不同 gcc/glibc 版本寄存器对应略有差异，需实际确认）。\n\n通用 gadget（以常见版本为例）：\ngadget1（csu_front）：pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret\n  → 一次性控制 6 个寄存器\ngadget2（csu_back）：mov rdx, r13; mov rsi, r14; mov edi, r15d; call qword [r12 + rbx*8]\n  → 用 r13/r14/r15 设置第 3/2/1 参数，调用 r12+rbx*8 处的函数指针\n\n利用步骤（以调用 write(1, bss, 8) 为例）：\n1. 通过 gadget1 设置：rbx=0，rbp=1，r12=write@got 地址，r13=8（rdx 长度），r14=bss 地址（rsi），r15=1（rdi，stdout）。\n2. 执行 gadget2：mov 设置 rdi/rsi/rdx → call [r12+rbx*8] = call [write@got] = write(1, bss, 8)。\n3. call 返回后，csu_back 会执行 add rsp, 8; pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret，需在栈上对应位置填充 7 个 8 字节占位，最后 ret 跳到下一 gadget 或 main。\n\n关键要点：\n- r12 指向目标函数的 GOT 表项，rbx=0 表示调用 r12 处第一个表项。\n- rbp 必须与 rbx 不等（通常 rbx=0, rbp=1），否则 cmp rbx,rbp 相等会走循环分支重复调用，导致异常。\n- 不同版本 csu gadget 的寄存器映射和指令序列可能不同，必须用 ROPgadget 或 objdump 实际确认，不能死记。\n- 现代部分程序（PIE + 特定编译选项）可能已移除 csu gadget，需以实际二进制为准。",
+      "explanation": "ret2csu 解决了 64 位 ROP 中'找不到控制 rdx 的 gadget'这一常见痛点。由于 __libc_csu_init 几乎存在于所有动态链接 64 位程序中，ret2csu 通用性很强。它本质上是借用程序自身的初始化代码中的寄存器装载逻辑，把 pop 出来的 r13/r14/r15 搬运到 rdx/rsi/rdi，再通过间接 call 调用 GOT 中的函数。利用时务必注意 rbp/rbx 的关系以及 call 返回后栈上的占位填充，否则会破坏后续 ROP 链。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "IO_FILE",
+      "question": "glibc 2.34 移除 __free_hook 后，FSOP 成为 getshell 主流手段。请简述 House of Apple 2（HOA2，glibc 2.37）利用的核心原理、vtable 伪造方法及关键触发条件。",
+      "answer": "HOA2 核心原理：\nglibc 2.34 移除 __free_hook/__malloc_hook 后，通过伪造 _IO_FILE_plus 结构体及其 vtable，在触发 _IO_OVERFLOW 时跳转到 system 实现 getshell。HOA2 巧妙利用 _IO_wfile_jumps 的特定偏移绕过 vtable 范围检查。\n\nvtable 伪造方法（glibc 2.37）：\n1. 泄露 libc 基址后，计算 _IO_wfile_jumps 地址。\n2. 以 _IO_wfile_jumps + 0xa0 作为伪造 vtable 的基址。该偏移使得 vtable[+0x18]（__overflow 槽位）恰好落在合法 vtable 区域内，通过 glibc 的 _IO_vtable_check 范围校验，同时让调用 overflow 时走到可控路径。\n   - 原理：glibc 校验伪造 vtable 必须位于合法 vtable 附近；偏移 0xa0 让检查通过且 overflow 指向 _IO_wfile_overflow。\n\n关键触发条件与字段构造：\n1. _flags 字段：需设置特定标志位（如 _IO_CURRENTLY_PUTTING=0x800、_IO_IS_APPENDING=0x10 等），使执行流进入调用 vtable __overflow 的路径。\n2. 'echo' 前缀技巧：_IO_wfile_overflow 的 flags 检查较严格，使用 'echo' 作为命令前缀可自动满足所有必需 flags 条件，是 HOA2 的关键实战技巧。\n3. 命令长度限制：受利用路径中的字符串截断限制，命令长度通常需 ≤ 13 字节（如 'echo ...' 拼接的命令），过长会被截断导致执行失败。\n4. 触发点：通过 exit/_IO_cleanup 遍历 _IO_list_all，或 free 包含伪造 FILE 的 chunk 触发 _IO_OVERFLOW 调用。\n\n完整利用链：\n1. 泄露 libc 基址 → 计算 _IO_wfile_jumps、system 等地址。\n2. 在可控内存（堆）伪造 _IO_FILE_plus 结构体：设置 _flags 与缓冲区相关字段，vtable 指针指向 _IO_wfile_jumps + 0xa0。\n3. 触发 exit 或 free → 调用伪造 vtable 的 __overflow → 执行 system 命令 getshell。\n\n注意：不同 glibc 小版本的偏移和条件可能有差异，必须在目标环境动态验证（GDB 断点跟踪 vtable 调用）。",
+      "explanation": "HOA2 是 glibc 2.34+ 后经典的 FSOP 利用技术，其精髓在于用 _IO_wfile_jumps + 0xa0 的偏移同时满足 vtable 合法性检查和可控的 overflow 跳转。'echo' 前缀满足 flags 是实战中提炼的重要经验，命令 ≤13 字节则源于利用路径中的缓冲区截断限制。由于 __free_hook 已移除，现代堆题的 getshell 往往转向 FSOP（House of Apple 系列）或 IO_FILE 相关攻击，掌握 vtable 伪造与触发条件是关键。"
+    }
+  ]
+}
