@@ -1,0 +1,125 @@
+{
+  "date": "2026-11-20",
+  "title": "Pwn 每日一练 · Day 005",
+  "topics": ["保护机制", "堆利用", "pwntools", "GDB调试", "IDA逆向", "格式化字符串", "GOT/PLT", "栈迁移", "内核利用基础", "ROP链构造"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于栈金丝雀（Canary）保护机制，下列说法错误的是？",
+      "options": [
+        "Canary 在函数序言（prologue）中向栈帧插入一个随机值，函数返回前校验其是否被改动",
+        "可利用格式化字符串漏洞直接读取栈上的 Canary 值实现泄露",
+        "Canary 最低字节固定为 0x00，可利用该特性从最高字节向最低字节逐字节爆破",
+        "开启 Canary 后，栈溢出漏洞将无法被任何方式利用"
+      ],
+      "answer": 3,
+      "explanation": "Canary 只是检测溢出、增大利用难度，并非使漏洞无法利用。常见绕过方式：①格式化字符串直接读栈泄露 Canary；②逐字节爆破（利用末字节固定为 0x00 的终止特性，从最高字节向低字节猜，程序不崩溃即为猜对）；③通过任意写或栈迁移避开对 Canary 的覆盖。因此 A/B/C 均正确，D 错误。"
+    },
+    {
+      "id": "q2",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "堆利用",
+      "question": "glibc 中，当一个大小超过 fastbin/tcache 范围的 chunk 被 free 且不与 top chunk 合并时，会被放入 ______ bin；该 bin 中 chunk 的 fd/bk 指针指向 ______ 内部 main_arena 相关地址，因此读取 fd/bk 即可泄露 libc 基址。",
+      "answer": ["unsorted;libc", "unsorted，libc"],
+      "explanation": "unsorted bin 暂存那些不满足立即归入 small/large bin 的大 chunk（64 位下通常大小超过 tcache 范围且未被合并）。其 fd/bk 初始指向 libc 中的 &main_arena.bins（unsorted bin 链表头），该地址与 libc 基址偏移固定。利用：free 一个大 chunk 后通过 UAF 或任意读读其 fd，用泄露值减去 libc.sym['main_arena'] 偏移即得 libc 基址。这是无标准输出函数时泄露 libc 的重要手段（仍需一个读原语配合）。"
+    },
+    {
+      "id": "q3",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 中，将一个整数打包为 64 位小端字节串使用 ______，将接收到的 8 字节数据解包为整数使用 ______；使用前需通过 context.______ 指定架构（如 'amd64'）以确定字节序与位数。",
+      "answer": ["p64;u64;arch", "p64，u64，arch"],
+      "explanation": "p64(x) 等价于 struct.pack('<Q', x)，生成 8 字节小端字节串；u64(data) 反向解包。context.arch='amd64' 会同时影响 p16/p32/p64 的默认字节序与 cyclic 的生成长度。常配套写 context(os='linux', arch='amd64', log_level='debug')。向栈上发送地址时必须用 p64 打包，否则会被当作字符串或整数错误写入，导致 ROP 链失效。"
+    },
+    {
+      "id": "q4",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "GDB调试",
+      "question": "GDB 调试时，希望逐条执行汇编指令，且遇到 call 指令时不进入被调用函数内部，应使用的命令是？",
+      "options": [
+        "s (step)",
+        "n (next)",
+        "si (stepi)",
+        "ni (nexti)"
+      ],
+      "answer": 3,
+      "explanation": "GDB 单步分源码级与指令级：s（step，源码行级，会进入函数）、n（next，源码行级，不进入函数）、si（stepi，指令级，会进入 call）、ni（nexti，指令级，不进入 call）。本题要求指令级单步且不进入 call，故选 ni。分析 ROP/gadget 执行流时常用 ni/si 逐步跟踪寄存器和栈变化；需要进入库函数内部观察时用 si。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中分析一个 CTF 二进制，想快速定位是否存在直接调用 system('/bin/sh') 的后门函数，最高效的方法是？",
+      "options": [
+        "打开字符串窗口（Shift+F12），搜索 '/bin/sh'、'sh' 等可疑字符串，对其按 X 查看交叉引用，定位引用处的函数",
+        "从 main 开始逐行阅读反编译代码",
+        "查看 ELF 段头信息",
+        "在 Strings 窗口搜索 'main' 字符串"
+      ],
+      "answer": 0,
+      "explanation": "后门函数通常引用 '/bin/sh'、'sh'、'cat flag' 等敏感字符串或调用 system/execve。Shift+F12 打开字符串窗口，定位可疑字符串后按 X（交叉引用）即可直接跳到引用该字符串的代码，再判断所在函数是否为零调用的孤立函数或被某输入触发。这比逐函数阅读高效得多，是 CTF 逆向中找捷径的常用手法。"
+    },
+    {
+      "id": "q6",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "格式化字符串",
+      "question": "利用格式化字符串漏洞的第一步是定位格式化字符串在栈上的起始偏移：输入 'AAAA' 后接若干 '%p'，当某个 %p 的输出值为 ______ 时，即表明该位置就是格式化字符串作为第 N 个参数的起始偏移；此后可用 ______ 语法直接访问第 N 个参数。",
+      "answer": ["0x41414141;%N$p", "0x41414141，%N$p", "0x4141414141414141;%N$p"],
+      "explanation": "'A' 的 ASCII 码为 0x41，4 个 'A' 对应 0x41414141（32 位）；64 位下若输入 8 个 'A' 则显示 0x4141414141414141。当某个 %p 打印出该值，说明格式化字符串缓冲区本身恰好落在栈的第 N 个参数位置。确定偏移 N 后，用 %N$p 直接读第 N 个参数，或用 %N$n 向第 N 个参数指向的地址写值。偏移定位是后续任意读/任意写的基础。"
+    },
+    {
+      "id": "q7",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "堆利用",
+      "question": "在 64 位 glibc 中，用户调用 malloc(0x80) 时，分配器返回的用户指针相对 chunk 起始地址的偏移为 ______ 字节（chunk 头长度）；该 chunk 的 size 字段（去除低 3 位标志后）通常为 ______（十六进制，16 字节对齐后）。",
+      "answer": ["16;0x90", "0x10，0x90"],
+      "explanation": "64 位 chunk 头为 prev_size(8) + size(8) = 16 字节，故用户指针 = chunk_addr + 0x10。实际分配大小按 (request + 8 + 15) & ~15 计算：0x80 + 8 = 0x88，向上取整到 16 字节对齐为 0x90，即 size 字段为 0x90（设置 PREV_INUSE 后实际存储 0x91）。计算溢出覆盖相邻 chunk 的范围时必须按对齐规则，否则会算错可覆盖区间。注意 32 位下 chunk 头为 8 字节、对齐粒度为 8 字节。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "GOT/PLT",
+      "question": "在 Partial RELRO 保护下，攻击者如何通过篡改 GOT 表项实现控制流劫持？为什么 Full RELRO 能够防御这种攻击？请简述原理。",
+      "answer": "GOT 劫持原理：\n1. Partial RELRO 下 .got.plt 节在程序运行期间可写，其中每个表项存储对应 libc 函数的真实地址（延迟绑定完成后）。\n2. 攻击者若拥有任意写原语（栈溢出覆盖、格式化字符串 %n、堆任意写等），可将某个高频调用函数（如 atoi、printf、free）的 GOT 表项改写为 system 或 one_gadget 的地址。\n3. 当程序下一次调用该函数时，PLT 经 jmp *GOT[n] 跳转到已被篡改的地址，从而执行 system 等函数，实现 getshell。\n4. 若被篡改函数的参数可控，可直接让参数为 '/bin/sh'：例如把 atoi@GOT 改为 system，再让程序输入 '/bin/sh'，原本的 atoi('/bin/sh') 即变为 system('/bin/sh')。\n\nFull RELRO 为何能防御：\n- Full RELRO 在加载阶段（BIND_NOW）就完成所有符号的重定位，随后将整个 GOT（含 .got.plt）设为只读。\n- 运行期任何对 GOT 的写入都会触发页错误（SIGSEGV），篡改 GOT 表项的攻击无法得逞。\n- 但 Full RELRO 只防'写'不防'读'，通过输出函数读取 GOT 表项内容泄露 libc 地址仍然可行，ret2libc 不受影响。",
+      "explanation": "GOT 劫持是 Partial RELRO 下最直接的控制流劫持手段，核心是利用 .got.plt 可写且 PLT 间接跳转的特性。选择被篡改的目标函数时，优先调用频繁、参数可控的函数（菜单题中 atoi 是常见目标）。Full RELRO 通过加载时绑定 + GOT 只读彻底关闭这一攻击面，但不影响信息泄露。实战中需先用 checksec / readelf 确认 RELRO 等级，再决定是否走 GOT 劫持路线。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "栈迁移",
+      "question": "某 64 位程序存在栈溢出，但溢出长度仅够覆盖到 saved rbp 和返回地址，无法容纳完整 ROP 链。程序导入了 read(0, bss_buf, 0x400)（bss_buf 在 .bss 段，可写）和 puts。请设计利用栈迁移（Stack Pivoting）到 .bss 段 getshell 的完整方案，说明各阶段目的并给出关键 payload 结构。",
+      "answer": "核心思路：溢出空间不足时，先用一段短 ROP 调用 read 把完整 ROP 链写入 .bss 可控区，再通过 leave; ret 把 rsp 迁移到 .bss 执行完整链。\n\nleave 指令等价于 mov rsp, rbp; pop rbp。因此只要把 saved rbp 覆盖为目标地址，函数返回时 rsp 就会被重定向到该处。\n\nStage 1：触发溢出，调用 read 把链写入 bss，并以 leave_ret 收尾\n栈布局（从低到高）：buf[offset] → saved_rbp[8] → 返回地址[8]。\npayload1 结构：\n  b'A' * offset                    # 填充到 saved rbp\n  + p64(bss_buf)                   # saved rbp：leave 时 mov rsp, bss_buf\n  + p64(pop_rdi_ret) + p64(0)      # rdi = 0 (stdin)\n  + p64(pop_rsi_ret) + p64(bss_buf)# rsi = bss_buf\n  + p64(pop_rdx_ret) + p64(0x400)  # rdx = 0x400（缺 pop rdx 可用 ret2csu 替代）\n  + p64(elf.plt['read'])           # read(0, bss_buf, 0x400) 把 Stage2 读入 bss\n  + p64(leave_ret)                 # read 返回后执行迁移\n\nStage 2：通过 read 读入 bss_buf 的内容（即真正的 ROP 链）\n布局要求：leave 执行时 rbp=bss_buf，故 mov rsp,bss_buf → pop rbp 弹出 [bss_buf] → rsp=bss_buf+8 → ret 取 [bss_buf+8]。所以：\n  bss_buf+0x00: 8 字节占位（被 pop rbp 丢弃）\n  bss_buf+0x08: pop_rdi_ret        # 链首\n  bss_buf+0x10: elf.got['puts']    # rdi = puts@got\n  bss_buf+0x18: elf.plt['puts']    # 调用 puts 泄露 libc\n  bss_buf+0x20: main_addr          # 泄露后返回 main 重新执行\n发送完 payload1 后立即发送上述 Stage2 字节流供 read 读入。\n\nStage 3：getshell（程序返回 main 后再次触发溢出）\n用泄露地址计算 libc 基址，构造：\n  b'A' * offset + p64(0) + p64(ret_gadget) + p64(pop_rdi_ret)\n  + p64(binsh_addr) + p64(system_addr)\n其中 ret_gadget（单独一个 ret）用于 16 字节栈对齐，避免 system 内部崩溃。binsh_addr = libc_base + next(libc.search(b'/bin/sh'))。\n\n关键验证：在 GDB 中于 leave_ret 处下断，用 ni 单步并检查 i r rsp，确认迁移后 rsp 恰好落在 bss_buf+8 且该处为有效 gadget，再继续执行。",
+      "explanation": "栈迁移的关键是精确控制 leave 执行后 rsp 的落点。经典技巧：把 saved rbp 覆盖为目标缓冲区地址，leave 的 mov rsp,rbp 让 rsp 指向该区，pop rbp 弹出 8 字节后 rsp 落在 +8 处，ret 即从 +8 开始执行 ROP 链。因此目标缓冲区前 8 字节是占位（被 pop rbp 丢弃），第 8 字节起必须是链首 gadget。先用 read 把链写入 bss，再迁移过去执行，绕过了原栈溢出空间不足的限制。注意 read 调用链中 rbp 不能被修改（pop_rdi/rsi/rdx 与 read 均不改动 rbp），才能保证 leave 时 rbp 仍是 bss_buf。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "内核利用基础",
+      "question": "在内核利用中，完成 commit_creds(prepare_kernel_cred(0)) 提权后，必须安全地从内核态返回用户态，否则会触发 #GP 故障。请简述 64 位下返回用户态所需的 iretq 栈帧结构，以及 swapgs 指令的作用。",
+      "answer": "64 位下从内核态返回用户态通过 swapgs + iretq 完成。iretq 会从栈上依次弹出 5 个字段恢复用户态上下文，并将特权级从 ring 0 降回 ring 3。\n\niretq 栈帧（按弹出顺序，栈上从低地址到高地址布置）：\n1. RIP    — 返回用户态后执行的指令地址（通常指向提前 mmap 的用户态可执行页中的代码，如 execve('/bin/sh')）\n2. CS     — 用户态代码段选择子，Linux x86-64 下通常为 0x33\n3. RFLAGS — 用户态标志寄存器，通常保存原值（如 0x202，确保 IF=1 开中断）\n4. RSP    — 用户态栈指针\n5. SS     — 用户态栈段选择子，通常为 0x2b\n\n即返回序列在栈上需依次布置：[RIP][CS][RFLAGS][RSP][SS]，然后跳到 swapgs; iretq（或内核自带的 swapgs_restore_regs_and_return_to_usermode gadget）。\n\nswapgs 指令的作用：\n- GS 段寄存器在用户态指向用户态数据段（如 TCB、Canary、线程局部存储 TLS），进入内核后需切换为指向内核 per-cpu 数据段（current task_struct 等）。\n- 进入内核时执行一次 swapgs 把 GS 切到内核态基址；返回用户态前必须再执行一次 swapgs 切回用户态基址，否则用户态访问 Canary / TLS 会错乱甚至崩溃。\n- 因此标准返回序列是 swapgs → iretq。\n\n实战要点：\n- 优先复用内核自带的 swapgs_restore_regs_and_return_to_usermode gadget，它内部已处理好寄存器恢复、swapgs 与 iretq，只需在栈上布置好用户态上下文（RIP/CS/RFLAGS/RSP/SS），比手写 iretq 帧更稳定。\n- 若开启 SMEP/SMAP，返回用户态的 RIP 必须落在用户态合法可执行页内，不能使用内核地址。\n- RFLAGS 中若 IF=0（关中断）可能导致系统异常，通常用保存的原值或 0x202。",
+      "explanation": "提权后若不恢复用户态上下文直接返回，CPU 仍处于 ring 0 却用用户态地址取指或栈错误，会触发 #GP/#SS 导致内核 panic。iretq 是唯一能同时恢复 CS/RIP/RFLAGS/SS/RSP 并降权的指令。swapgs 负责切换 GS 段基址，保证用户态 Canary/TLS 正常。现代内核中常直接用 swapgs_restore_regs_and_return_to_usermode 这类现成 gadget，避免手算各字段。RIP 通常指向用户态 mmap 的可执行页，里面放一段调用 execve('/bin/sh',0,0) 的代码或直接 system。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "ROP链构造",
+      "question": "某 64 位程序没有导入 system 或 execve，但存在栈溢出且程序内可找到足够的 pop 类 gadget。请说明如何通过 ret2syscall 直接调用 execve 系统调用 getshell，写出寄存器布置和 ROP 链结构。",
+      "answer": "ret2syscall 原理：不依赖 libc 中的 system/execve 函数，而是直接布置好 execve 的系统调用号与参数，用程序内的 syscall 指令触发内核执行 execve('/bin/sh', NULL, NULL)。\n\n64 位 execve 系统调用约定：\n- 调用号：rax = 59 (0x3b)\n- 参数：rdi = '/bin/sh' 字符串地址，rsi = 0 (argv)，rdx = 0 (envp)\n- 触发：syscall 指令\n\n所需 gadget：\n1. pop rax; ret   → 设置 rax = 59\n2. pop rdi; ret   → 设置 rdi = '/bin/sh' 地址\n3. pop rsi; ret   → 设置 rsi = 0\n4. pop rdx; ret   → 设置 rdx = 0（若缺失可用 ret2csu 的 mov rdx, r13 路径替代）\n5. syscall; ret   → 触发系统调用（若只有 syscall 无 ret 也可，成功后进程映像被替换不再返回）\n6. '/bin/sh' 字符串：若程序中没有，先用 ROP 调 read(0, bss, 8) 把 '/bin/sh\\x00' 读入 .bss，或用 mov [reg], imm 类 gadget 写入可写内存。\n\nROP 链结构（64 位，假设 '/bin/sh' 已在 bss）：\n```python\npayload  = padding                       # 覆盖到返回地址\npayload += p64(pop_rax_ret) + p64(59)    # rax = execve 调用号\npayload += p64(pop_rdi_ret) + p64(binsh) # rdi = '/bin/sh'\npayload += p64(pop_rsi_ret) + p64(0)     # rsi = NULL\npayload += p64(pop_rdx_ret) + p64(0)     # rdx = NULL\npayload += p64(syscall_ret)              # 触发 execve\n```\n\n若程序中找不到 '/bin/sh'，先加一段写入链：\n```python\npayload += p64(pop_rdi_ret) + p64(0)\npayload += p64(pop_rsi_ret) + p64(bss)\npayload += p64(pop_rdx_ret) + p64(8)\npayload += p64(elf.plt['read'])          # read(0, bss, 8) 读入 '/bin/sh\\x00'\n# 再发送 b'/bin/sh\\x00'，随后接上面的 execve 链\n```\n\n注意事项：\n- syscall 执行成功后进程映像被替换，不会返回到 syscall 之后的地址，因此 syscall 后无需布置返回地址。\n- 必须确认程序中存在 syscall 指令：ROPgadget --binary ./pwn | grep ': syscall'。静态链接程序通常更容易凑齐 gadget。\n- 若只有 int 0x80（32 位调用约定），需改用 32 位调用号（execve=11）和 32 位寄存器传参（ebx/ecx/edx），64 位程序中较少使用。",
+      "explanation": "ret2syscall 是当 libc 不可控（无 system/one_gadget 或 libc 版本未知）时的兜底利用方案，完全依赖程序自身的 gadget 和 syscall 指令，绕过了对 libc 函数地址的依赖。难点在于凑齐 pop rax/rdi/rsi/rdx 和 syscall 这些 gadget，其中 pop rdx; ret 常缺失，此时可用 ret2csu 的 r13→rdx 路径替代。若程序中没有 '/bin/sh' 字符串，需先用 read 写入可写内存。动态程序也可改用 ROP 调用 mprotect 把某页改为可执行再跳 shellcode，但 ret2syscall 更直接。"
+    }
+  ]
+}
