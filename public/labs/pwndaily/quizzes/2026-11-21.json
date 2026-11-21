@@ -1,0 +1,131 @@
+{
+  "date": "2026-11-21",
+  "title": "Pwn 每日一练 · Day 006",
+  "topics": ["保护机制", "pwntools", "IDA逆向", "libc地址泄露", "shellcode", "格式化字符串", "堆利用", "GDB调试", "ret2libc", "内核利用基础"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "在 64 位 Linux 系统中，关于 ASLR 地址随机化的范围，下列说法正确的是？",
+      "options": [
+        "ASLR 会随机化程序代码段（.text）的基址，因此程序中所有函数地址每次运行都不同",
+        "ASLR 随机化栈、堆、共享库（libc）和 mmap 区域的基址，且这些基址通常按页对齐（低 12 位固定为 0）",
+        "ASLR 开启后，libc 中各函数之间的相对偏移也会随机变化",
+        "可以通过 checksec 命令查看系统 ASLR 是否开启"
+      ],
+      "answer": 1,
+      "explanation": "ASLR 由内核控制，随机化栈、堆、mmap 区（含共享库 libc）的基址；这些基址按页对齐，故低 12 位（页内偏移）固定不变，这也是爆破 ASLR 时只需猜高位的原因。A 错误：程序代码段是否随机取决于编译时是否开启 PIE，而非 ASLR 本身；C 错误：libc 是整体平移，内部函数相对偏移固定不变；D 错误：checksec 只能查看程序的 PIE/RELRO/NX/Canary 属性，无法查看系统 ASLR 状态（可通过 /proc/sys/kernel/randomize_va_space 查看）。"
+    },
+    {
+      "id": "q2",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 中，持续接收数据直到出现指定标志字符串（如 'choice:'）使用 ______ 方法；发送一行数据并自动追加换行符使用 ______ 方法。",
+      "answer": ["recvuntil;sendline", "recvuntil，sendline"],
+      "explanation": "io.recvuntil(b'choice:') 会阻塞读取直到接收到目标标志串，常用于同步菜单题的交互节奏；若需把标志串也保留在缓冲区可加 keepends=True。io.sendline(data) 等价于 io.send(data + b'\\n')，适用于程序用 readline/gets/fgets 按行读取输入的场景。交互类题目中 recvuntil + sendline 是最常用的接收-发送组合。"
+    },
+    {
+      "id": "q3",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中分析 CTF 二进制时，想将当前汇编函数反编译为 C 伪代码以便阅读逻辑，应使用的操作是？",
+      "options": [
+        "按 Tab 键切换视图",
+        "按 F5 键反编译当前函数为 C 伪代码",
+        "按 Shift+F12 打开字符串窗口",
+        "按 Ctrl+F3 打开函数列表"
+      ],
+      "answer": 1,
+      "explanation": "F5 是 Hex-Rays 反编译器的快捷键，将当前函数反编译为 C 伪代码，极大提升阅读效率。Tab 键用于在汇编视图与已生成的伪代码视图之间切换；Shift+F12 打开字符串窗口用于定位敏感字符串；Ctrl+F3（或 Functions 窗口）用于浏览所有函数。逆向菜单题时通常先 F5 看主逻辑，再结合交叉引用（X 键）定位漏洞函数。"
+    },
+    {
+      "id": "q4",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "libc地址泄露",
+      "question": "64 位程序泄露到 puts@got 表项的运行时地址为 leak，已知 libc 中 puts 的符号偏移为 libc.sym['puts']，则 libc 基址 = leak ______（填'加'或'减'）该偏移；据此获取 system 地址的 pwntools 写法为 system_addr = libc_base ______ libc.sym['system']。",
+      "answer": ["减;加", "减，加"],
+      "explanation": "libc 中所有符号的相对偏移固定，运行时地址 = libc_base + 符号偏移。因此 libc_base = leak - libc.sym['puts']（泄露地址减去符号偏移），再用基址加其他符号偏移得到任意函数地址：system_addr = libc_base + libc.sym['system']，binsh_addr = libc_base + next(libc.search(b'/bin/sh'))。注意泄露地址要先去掉无效高位（64 位用 u64 补齐到 8 字节），避免符号位扩展错误。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "shellcode",
+      "question": "编写或注入 shellcode 时需要避免出现空字节（0x00），主要原因是？",
+      "options": [
+        "空字节会导致 CPU 无法解码指令",
+        "基于字符串的输入函数（如 strcpy、gets、scanf(\"%s\")）遇到空字节会停止复制，使 shellcode 被截断",
+        "空字节会触发 NX 保护",
+        "空字节会使 shellcode 长度超过栈空间"
+      ],
+      "answer": 1,
+      "explanation": "strcpy、gets、scanf('%s') 等字符串函数以 \\x00 作为字符串结束符，遇到空字节即停止读取，导致后续 shellcode 无法被完整写入，执行时崩溃。read(0, buf, n) 按字节数读取，不受空字节影响，但若题目输入走字符串函数就必须对 shellcode 做编码（如 XOR、自修改、避开含 \\x00 的指令）。A 错误：CPU 完全能解码含 0x00 的指令；C/D 与空字节无直接因果。"
+    },
+    {
+      "id": "q6",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "格式化字符串",
+      "question": "关于 pwntools 的 fmtstr_payload(offset, writes) 函数，下列说法错误的是？",
+      "options": [
+        "它可以根据给定的偏移和写入目标自动构造格式化字符串任意写 payload",
+        "offset 是格式化字符串缓冲区在栈上的起始参数位置（即第几个参数）",
+        "writes 是一个字典，形如 {地址: 要写入的值}，支持同时向多个地址写不同值",
+        "fmtstr_payload 只能用于 32 位程序，64 位程序无法使用"
+      ],
+      "answer": 3,
+      "explanation": "fmtstr_payload 自动生成实现任意写的格式化字符串，同时支持 32 位和 64 位。参数 offset 为格式化字符串在栈上的起始偏移（先用 AAAA+%p 定位）；writes 为 {目标地址: 待写入值} 的字典，可一次写多处。其原理是利用 %N$hhn 逐字节（或 %N$hn 逐半字）写入，通过控制输出字符数精确控制写入值。64 位因地址含空字节，需把地址放在 payload 尾部（格式化字符串之后），并相应调整 offset，pwntools 会自动处理。D 错误。"
+    },
+    {
+      "id": "q7",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "堆利用",
+      "question": "在 glibc 2.32+ safe-linking 环境下利用 tcache poisoning 前需先泄露 heap 基址。一种常用方法是：当 tcache 链表中有 2 个以上 chunk 时，链表中第二个 chunk 的 fd 字段存储的是 ______（填'加密后'或'加密前'）的第一个 chunk 地址；通过 UAF 或任意读读该 fd，再用 ______ 运算结合已知的存放地址即可还原出真实 chunk 地址，进而推出 heap 基址。",
+      "answer": ["加密后;异或(XOR)", "加密后，异或"],
+      "explanation": "safe-linking 下，free 时存入 fd 的值是 原指针 XOR (存放该 fd 的地址 >> 12)。tcache 链表中第二个 chunk 的 fd 存放着第一个 chunk 地址的加密值。攻击者通过 UAF 读出该加密值后，由于'存放 fd 的地址'≈ 该 chunk 自身地址（可通过堆布局推算或由泄露值反推），用 加密值 XOR (存放地址 >> 12) 即可还原出真实 chunk 地址，进而推出 heap 基址。拿到 heap 基址后才能正确计算伪造 fd 所需的异或密钥，完成 tcache poisoning。"
+    },
+    {
+      "id": "q8",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "ret2libc",
+      "question": "32 位程序（cdecl 约定，参数全部压栈）中，用 write 函数泄露 libc 地址的 ROP 链结构为：padding + write@plt + ______ + 1 + ______ + 4。即调用 write(1, 目标GOT, 4)，参数从右向左压栈，链上顺序为返回地址、fd=1、buf=目标GOT、count=4。",
+      "answer": ["返回地址(main);目标GOT地址", "返回地址，目标函数GOT地址"],
+      "explanation": "32 位 cdecl 下参数从右向左压栈，调用 write(1, got_addr, 4) 时栈布局（低→高）为：返回地址、fd(1)、buf(got_addr)、count(4)。ROP 链顺序：padding + write@plt + 返回地址(如 main) + p32(1) + p32(目标GOT) + p32(4)。返回地址填 main 是为了泄露后重新执行以发送第二阶段 payload；4 是 32 位地址长度。32 位优先用 write 而非 puts 泄露，是因为 puts 遇 \\x00 停止且输出不定长，write 能精确输出 4 字节。注意 64 位需用 pop 寄存器 gadget 传参，结构与此不同。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "GDB调试",
+      "question": "某 Pwn 题二进制运行时需要从命令行接收参数（如 ./pwn arg1 arg2），且存在栈溢出。请说明在 GDB 中如何设置并查看运行参数，以及如何快速确定溢出覆盖到返回地址的偏移量。",
+      "answer": "一、设置与查看命令行参数：\n1. 设置参数：在 run 之前执行 set args arg1 arg2，参数会在每次 run 时传递给程序。\n2. 查看当前参数：show args。\n3. 带空格或特殊字符的参数需用引号包裹，如 set args 'hello world'。\n4. 也可在启动时一次性传入：run arg1 arg2（仅本次 run 生效，不持久）。\n\n二、确定栈溢出偏移的标准流程（cyclic 法）：\n1. 用 pwntools 生成循环字符串：python -c \"from pwn import *; print(cyclic(200))\" > input.txt，或在 exploit 脚本中直接发送。\n2. GDB 中 run < input.txt（或通过脚本把循环串喂给程序）触发崩溃。\n3. 查看崩溃时的指令指针：i r rip（64 位）或 i r eip（32 位），记录崩溃地址。\n4. 用 cyclic_find 反算偏移：python -c \"from pwn import *; print(cyclic_find(0x61616166))\"。\n5. 若开启 Canary：先用 i r rbp 定位栈帧基址，再 x/gx $rbp-0x8 查看 Canary 值（64 位 Canary 在 saved rbp 前 8 字节），构造 payload 时需把正确 Canary 填回对应位置。\n6. 验证：在返回地址处下断点 b *<addr> 或用 pattern 确认覆盖位置，用 ni/si 逐步跟踪返回值是否变为预期地址。\n\n补充：若程序从标准输入读取而非命令行参数，用 run < input.txt 或 run 后手动粘贴输入；需调试已运行进程时用 attach <pid>。",
+      "explanation": "带命令行参数的二进制在 GDB 中必须用 set args 正确传参，否则程序行为与正常运行不一致，调试结果会失真。cyclic + cyclic_find 是确定溢出偏移的标准组合，比逐字节试探高效得多；结合 i r rip/eip 查看崩溃指令指针和 x 查看栈内容，可快速定位覆盖范围。Canary 开启时要先定位 Canary 在栈上的位置再构造 payload。掌握这些调试技巧能大幅缩短漏洞分析时间。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "堆利用",
+      "question": "某 64 位菜单题（glibc 2.31，无 safe-linking，存在 edit 堆溢出：可向 chunk 写入超过申请大小的数据，能覆盖相邻 chunk 的 size 字段；free 后指针未置空）。目标是 getshell。请设计利用'堆溢出构造 chunk 重叠（overlapping）'泄露 libc 并最终 getshell 的完整思路，说明各步骤目的与关键操作。",
+      "answer": "核心思路：利用堆溢出篡改相邻 chunk 的 size 字段，让 malloc 切出一块与现有 chunk 物理重叠的更大块，使两个指针别名同一片内存（一个可读、一个可写），再配合 unsorted bin 泄露 libc，最后 tcache poisoning 写 __free_hook getshell。\n\nStep 1：布局堆块（防止合并）\n申请 4 个 chunk：A(0x80)、B(0x80)、C(0x80)、D(0x80)。D 用于隔离，防止 C 被 free 时与 top chunk 合并。\n\nStep 2：构造 overlapping（重叠）\n- free(B) → B 进入 tcache。\n- 通过 edit(A) 堆溢出，覆盖 B 的 size 字段：把 B 的 size 从 0x91 改大，例如改为 0x121（使其跨越到原 C 的范围，注意 16 字节对齐且保留 PREV_INUSE 标志位）。\n- 申请一个 0x110 大小的 chunk E：malloc 从 B 的位置切出一块 0x120 的空间（含原 B 和部分 C），此时 E 与后续的 C 在物理内存上重叠。\n- 现在 E（可写指针）和 C（可读指针）指向同一片内存区域，获得'同一内存两个视角'。\n\nStep 3：泄露 libc（让 chunk 进入 unsorted bin）\n- 先填满对应大小的 tcache：连续 free 7 个同大小 chunk 把该大小类的 tcache 填满（tcache 每类最多 7 个）。\n- 再 free(C) → C 不再进 tcache，而是进入 unsorted bin，其 fd/bk 指向 libc 内 main_arena 相关地址。\n- 通过重叠指针 E 读取 C 的 fd 字段（E 的数据区正好覆盖 C 的 fd 位置），得到 main_arena 偏移地址，减去 libc 中 main_arena 的固定偏移即得 libc 基址。\n\nStep 4：getshell（tcache poisoning → __free_hook）\n- 利用 E 与 C 的重叠，通过 edit(E) 修改 C 的 fd，将 tcache 链表指向 __free_hook（glibc 2.31 无 safe-linking，直接写目标地址即可）。\n- 连续申请两次同大小 chunk：第一次拿回原 chunk，第二次返回伪造的 __free_hook 地址，从而在 __free_hook 处获得一个可控 chunk。\n- 向该 chunk 写入 system 地址覆盖 __free_hook，再 free 一个内容为 \"/bin/sh\" 的 chunk → 触发 system(\"/bin/sh\") getshell。\n\n关键要点：\n- 重叠构造的核心是篡改 size 让 malloc 切出一块跨越多个原 chunk 的新块，使两个指针别名同一块内存。\n- 泄露 libc 必须让 chunk 进入 unsorted bin（先填满 tcache），fastbin/tcache 的 fd 指向堆内而非 libc。\n- size 篡改要精确（16 字节对齐、PREV_INUSE 标志位正确），并留隔离 chunk 防止与 top chunk 合并。\n- glibc 2.32+ 需处理 safe-linking（先泄露 heap 基址计算异或密钥）；2.34+ 移除 __free_hook 后改用 FSOP。\n- GDB 中用 heap 命令查看 chunk 布局，确认重叠是否成功。",
+      "explanation": "chunk overlapping 是堆利用的核心进阶技巧，通过伪造 size 让分配器切出一块与现有 chunk 物理重叠的内存，从而获得'同一内存两个视角'（一个读、一个写）。它解决了 UAF/edit 受限于单 chunk 或需要跨 chunk 操作的问题。与单纯 UAF tcache poisoning 相比，overlapping 能操作更大范围，并配合 unsorted bin 泄露 libc（在无标准输出函数时也适用）。关键是 size 篡改要精确（对齐 + 标志位），并防止 free 时与 top chunk 合并。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "内核利用基础",
+      "question": "在 Linux 内核利用中，内核态如何获取当前进程的 task_struct（current 指针）？task_struct 与 cred 的关系是什么？GS 段寄存器在其中扮演什么角色？请简述获取 current 后实现提权的两种路径。",
+      "answer": "一、获取 current（当前进程 task_struct 指针）：\nLinux 中 current 是一个 per-cpu 变量，x86-64 架构下存储在 GS 段寄存器指向的内核 per-cpu 数据区的固定偏移处。内核态通过 mov %gs:偏移, %rax 即可读取当前进程的 task_struct 指针。该偏移与内核版本相关，但同一版本内固定。拿到 current 后就能访问 task_struct 的各个字段（含 cred）。\n\n二、task_struct 与 cred 的关系：\ntask_struct 是描述进程所有信息的结构体，其中包含一个 cred 字段（struct cred *cred），指向该进程的凭证结构体。cred 中存放 uid/gid/euid/egid/capabilities 等权限相关字段。修改 cred 即修改进程权限。\n\n三、GS 段寄存器的作用：\n- 用户态 GS 指向用户态 TCB（含 Canary、线程局部存储 TLS）；进入内核时执行 swapgs，把 GS 切换为内核 per-cpu 基址，内核才能通过 GS 访问 current 及每 CPU 变量。\n- 返回用户态前再次 swapgs 切回用户态基址，保证用户态 TLS/Canary 正常。这也是 swapgs + iretq 是标准返回序列的根本原因。\n- 若能控制 GS 基址或在 GS 指向区域布置伪造数据，可篡改 current 实现高阶攻击，但通常更简单的是直接调用标准提权函数。\n\n四、获取 current 后提权的两种路径：\n路径 1（标准、最稳妥）：调用 commit_creds(prepare_kernel_cred(0))\n- prepare_kernel_cred(0) 基于 init 进程的 cred 生成一个 root 权限的新 cred；\n- commit_creds() 将 current->cred 原子地替换为新 cred，完成提权。\n- 无需手动计算 cred 字段偏移，兼容性最好。\n\n路径 2（任意写原语，无函数调用条件时）：直接改写 current->cred 字段内容\n- 定位 current->cred 指向的 cred 结构体地址，把其中 uid/gid/euid/egid 等字段全部写为 0（root），并把 capabilities 设为全 1（CAP_FULL）。\n- 更隐蔽的做法：将整个 cred 结构体覆盖为已知 root 进程（如 init_task）的 cred 内容。\n- 注意 cred 的引用计数（usage）与版本字段，直接改写可能被内核检测到，需谨慎处理。\n\n验证：返回用户态后执行 id / whoami，显示 uid=0(root) 即成功，或直接读 /flag。\n\n实战要点：\n- 现代内核开启 KASLR，task_struct/cred 地址随机化，需先泄露内核基址或借助 ret2dir 访问直接映射区（physmap）定位。\n- 优先使用路径 1（commit_creds 链），比手动改 cred 字段更稳定；路径 2 仅在无法调用函数时使用。\n- SMEP/SMAP 开启时，提权必须在内核态完成，返回用户态需正确构造 swapgs + iretq 帧。",
+      "explanation": "current 指针是内核利用的核心枢纽——拿到 current 就能找到 task_struct，进而找到 cred 完成提权。x86-64 下 current 存于 GS 段指向的 per-cpu 区，这正是 swapgs 指令存在的根本原因（切换用户态/内核态 GS 基址）。标准提权链 commit_creds(prepare_kernel_cred(0)) 封装了 cred 的生成与替换，无需手动计算字段偏移；在只有任意写、无法调用函数时，直接改写 current->cred 的 uid/capabilities 为 0/全 1 也是可行路径。配合 KASLR 绕过与返回用户态知识，可串联成完整内核利用链。"
+    }
+  ]
+}
