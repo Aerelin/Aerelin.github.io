@@ -1,0 +1,126 @@
+{
+  "date": "2026-11-23",
+  "title": "Pwn 每日一练 · Day 007",
+  "topics": ["pwntools", "GDB调试", "IDA逆向", "shellcode", "保护机制", "libc地址泄露", "ROP链构造", "内核利用基础", "堆利用", "IO_FILE", "格式化字符串"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 中关于加载 libc 与获取符号偏移，下列说法错误的是？",
+      "options": [
+        "libc = ELF('./libc.so.6') 后可通过 libc.sym['system'] 获取 system 的符号偏移",
+        "若题目二进制附带 libc，可用 elf.libc 直接获取对应的 libc 对象",
+        "next(libc.search(b'/bin/sh')) 可在 libc 中搜索 '/bin/sh' 字符串地址",
+        "libc.symbols 只能获取函数符号，无法获取 main_arena、__environ 等全局变量的地址"
+      ],
+      "answer": 3,
+      "explanation": "libc.symbols（即 libc.sym）既包含函数符号也包含全局变量符号，main_arena、__environ、_IO_list_all 等均可直接获取偏移，常用于泄露定位。A/B/C 均为正确用法。补充：远程无附件 libc 时无法用 ELF 加载，需改用 LibcSearcher 或在线库（libc.blukat.me / libc.rip）匹配版本，建议多泄露 2 个以上函数地址以提高匹配准确率。"
+    },
+    {
+      "id": "q2",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "GDB调试",
+      "question": "GDB 中在某地址下断点使用命令 ______（地址前必须加 * 前缀）；查看所有断点列表使用 ______（可简写为 i b）；删除编号为 2 的断点使用 ______。",
+      "answer": ["b *地址;info breakpoints;delete 2", "b *地址，info breakpoints，delete 2"],
+      "explanation": "b *0x401234 在指定地址下断（若只写函数名用 b func，裸地址必须加 * 才会被当作地址而非符号）；info breakpoints（简写 i b）列出所有断点、命中次数与状态；delete N 删除指定编号断点，clear 删除当前行断点。验证 ROP 链时，常在关键 gadget 入口、目标函数入口和返回指令处下断，配合 ni/si 单步跟踪寄存器与栈变化，是确认链是否按预期执行的核心手段。"
+    },
+    {
+      "id": "q3",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中分析二进制时，想查看当前光标处的字符串/函数/地址被哪些位置引用（即交叉引用 xref），应按下的键是？",
+      "options": ["X", "R", "N", "G"],
+      "answer": 0,
+      "explanation": "X 键打开交叉引用窗口（xrefs to），列出所有引用当前符号的位置，是逆向中追踪数据流与调用关系的核心操作。R 用于在数据与代码间转换，N 用于重命名符号/变量，G 用于跳转到指定地址。定位漏洞函数时，常对危险函数（system、strcpy、gets）或敏感字符串按 X 查看调用方，快速缩小分析范围。"
+    },
+    {
+      "id": "q4",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "shellcode",
+      "question": "pwntools 中用于生成常见系统调用 shellcode（如 execve('/bin/sh')）的模块是 ______；对生成的 shellcode 进行编码以避开坏字符（如 \\x00、\\x0a）可使用 ______ 模块，编码后会在开头附带自解码 stub。",
+      "answer": ["shellcraft;encoders", "shellcraft，encoders"],
+      "explanation": "shellcraft.amd64.linux.sh() 生成执行 execve('/bin/sh', NULL, NULL) 的 shellcode 汇编，再用 asm() 汇编为字节。pwnlib.encoders（如 pwnlib.encoders.xor、pwnlib.encoders.alphanumeric）可对 shellcode 编码，使其不含 \\x00 等坏字符，并在头部插入自解码 stub（运行时还原原始 shellcode 再跳转执行）。编码后长度会增加，需确认缓冲区容量足够；输入函数为 read 按字节读取时不受空字节限制，只有 strcpy/gets/scanf(\"%s\") 等字符串函数才必须编码。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于程序保护机制与利用路线的对应，下列说法错误的是？",
+      "options": [
+        "NX 开启 → 不能直接执行栈上 shellcode，改用 ROP / ret2libc / ret2syscall",
+        "Canary 开启 → 需先泄露或爆破 Canary，才能安全覆盖返回地址",
+        "Full RELRO → 无法读取 GOT 表项内容，ret2libc 不可行",
+        "PIE 开启 → 需先泄露一个程序内固定偏移的地址，以计算程序基址"
+      ],
+      "answer": 2,
+      "explanation": "Full RELRO 仅在加载时完成所有重定位并将 GOT 设为只读，防御的是对 GOT 的'写'（GOT 劫持），不阻止'读'——GOT 表项中仍存着 libc 函数真实地址，用 puts/write 读出即可泄露 libc，ret2libc 依然可行。A/B/D 均正确。这是 checksec 决策速查表：NX 决定能否用 shellcode，Canary 决定是否要先泄露，RELRO 决定能否改 GOT，PIE 决定是否要泄露程序基址。"
+    },
+    {
+      "id": "q6",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "libc地址泄露",
+      "question": "远程 Pwn 题无附件 libc 时，泄露到函数地址后常用 ______ 工具或在线网站匹配 libc 版本；为提高匹配准确率，应至少泄露 ______ 个以上函数地址并用 add_condition 附加条件。32 位 libc 地址最高字节通常为 ______，64 位通常为 ______，可据此快速判断目标位数与泄露是否有效。",
+      "answer": ["LibcSearcher;2;0xf7;0x7f", "LibcSearcher，2，0xf7，0x7f"],
+      "explanation": "单个函数地址在 LibcSearcher 中常匹配到多个候选 libc（不同版本中 puts 偏移可能重合），泄露 2 个以上函数（如 puts + printf 或 write + read）并用 add_condition 附加条件可显著缩小范围。64 位 libc 基址最高字节恒为 0x7f，32 位恒为 0xf7——泄露到的地址若最高位不是 0x7f/0xf7，多半是泄露错位或截断（如 puts 遇 \\x00 提前停止），需改用 write 重新泄露。本地有 libc 时优先用 elf.libc 直接拿偏移，准确率最高。"
+    },
+    {
+      "id": "q7",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "ROP链构造",
+      "question": "64 位 System V ABI 要求调用函数前 rsp 16 字节对齐，否则 system 等函数内部的 movaps 指令会触发段错误。关于栈对齐的处理，下列说法错误的是？",
+      "options": [
+        "可在目标函数前插入一个仅含 ret 指令的 gadget 微调对齐",
+        "ret 对齐 gadget 应放在目标函数地址的正前方（紧邻其前）",
+        "只要 ROP 链中 gadget 数量为偶数就天然对齐，无需额外处理",
+        "对齐错误时程序通常在 system 内部崩溃（如 movaps 处 SIGSEGV），而不是正常返回 shell"
+      ],
+      "answer": 2,
+      "explanation": "是否对齐取决于进入目标函数时 rsp 的实际值，而非 gadget 数量的奇偶——每个 gadget 弹出的字节数不同（pop rdi;ret 弹 8 字节，单个 ret 不弹额外数据），不能用数量奇偶判断。正确做法：在目标函数地址前放一个 ret gadget，使 call 压入 8 字节返回地址后，进入函数时 rsp%16==0 满足对齐（即调用前 rsp%16==8）。GDB 中在 system 入口下断，用 i r rsp 检查 rsp%16 是否为 8，不满足就增删一个 ret gadget 微调。D 正确：对齐错误常表现为 system 内 movaps 崩溃。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "内核利用基础",
+      "question": "现代内核利用中，当已获得内核任意写原语但难以构造 ROP 调用 commit_creds 时，常用覆盖 modprobe_path 的方式提权。请简述其原理、完整利用步骤及触发条件。",
+      "answer": "原理：当用户态执行一个内核无法识别格式的文件时，内核会调用 /sbin/modprobe 去加载相应的内核模块；modprobe_path 是内核中的一个全局字符串变量，保存着 modprobe 可执行文件的路径。若用任意写把 modprobe_path 覆盖为攻击者控制的可执行文件路径，内核就会以 root 权限执行该文件，从而提权。\n\n利用步骤：\n1. 泄露内核基址，定位 modprobe_path 符号地址（可通过可读的 /proc/kallsyms 直接读取，或用泄露到的内核基址 + 固定符号偏移计算）。\n2. 在用户态准备一个可控可执行文件，例如 /tmp/x，内容为 '#!/bin/sh\\nchmod 777 /flag' 或起反弹 shell，并赋予可执行权限（chmod +x /tmp/x）。\n3. 利用已有的任意写原语，把 modprobe_path 指向的字符串改写为 '/tmp/x\\x00'（覆盖原 '/sbin/modprobe'）。\n4. 触发 modprobe 调用：在用户态 execve 一个'格式无法识别'的文件——例如向某文件写入 4 字节非 ELF 魔数后执行它，或执行一个没有可识别头的文件，内核尝试用 modprobe 处理时即以 root 执行 /tmp/x，完成提权。\n\n触发条件：需要一个内核任意写原语；目标内核中 modprobe_path 可写（多数 CTF 内核题未对其硬化）。相比 commit_creds(prepare_kernel_cred(0))，modprobe_path 覆盖无需调用内核函数、无需构造完整 ROP 链，只要一个写原语即可，是更简洁的提权路径。\n\n验证：触发后查看 /flag 权限或直接读取，或执行 id 显示 uid=0(root)。",
+      "explanation": "modprobe_path 覆盖是现代内核题中非常实用的提权手法，核心是利用内核'用 modprobe 处理未知格式文件'这一固有逻辑，把 modprobe 路径偷换成攻击者可控文件。它把'调用内核函数提权'降级为'一次任意字符串写 + 一次用户态触发'，极大降低了利用难度。与 commit_creds 路径互补：有任意写但凑不齐 ROP gadget 时优先考虑 modprobe_path；能稳定调用函数时仍首选 commit_creds 链。注意触发文件必须是内核无法识别的格式，否则不会走到 modprobe 逻辑。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "堆利用",
+      "question": "某 64 位菜单题（glibc 2.31）维护一个全局指针数组 g_ptr[] 保存每次 malloc 返回的指针，提供 edit 写任意 chunk 内容、存在堆溢出可覆盖相邻 chunk，但 free 后指针会被置空（无 UAF，无法 double free）。请说明如何利用 unlink 技术获得任意写原语，并解释 glibc 2.31 的 unlink 完整性校验如何满足。",
+      "answer": "unlink 原理：glibc free 一个 chunk 时，若其物理相邻的前一个 chunk 处于空闲态（当前 chunk size 的 PREV_INUSE 位为 0），会调用 unlink 把前一个空闲 chunk 从所属 bin 链表中摘除。unlink 核心操作为：\n  FD = P->fd;  BK = P->bk;\n  FD->bk = BK;   // 向 [FD + 0x18] 写入 BK\n  BK->fd = FD;   // 向 [BK + 0x10] 写入 FD\n攻击者伪造 chunk P 并控制 P->fd / P->bk，即可借这两次写入实现任意写。\n\nglibc 2.31 完整性校验（unlink 执行前）：\n  if (FD->bk != P || BK->fd != P) malloc_printerr(\"corrupted double-linked list\");\n即必须满足 *(P->fd + 0x18) == P 且 *(P->bk + 0x10) == P。这要求 FD 与 BK 指向的位置恰好存着 P 的地址——全局指针数组 g_ptr 正好满足（g_ptr[i] 存着 chunk 地址）。\n\n构造步骤：\n设 g_ptr[0] 指向可控 chunk A，A 之后紧跟 chunk B。\n1. 在 chunk A 的数据区内、紧邻用户数据起始处伪造一个假 chunk P（使 P 地址 == g_ptr[0]，即 *g_ptr[0] == P）：\n   - 伪造 P 的 size（如 0x81，PREV_INUSE=1，防止被向前合并）；\n   - 设 P->fd = &g_ptr[0] - 0x18，则 FD->bk = *((&g_ptr[0]-0x18)+0x18) = *g_ptr[0] = P，校验成立；\n   - 设 P->bk = &g_ptr[0] - 0x10，则 BK->fd = *((&g_ptr[0]-0x10)+0x10) = *g_ptr[0] = P，校验成立。\n2. 通过堆溢出修改 chunk B 的 size：清除 PREV_INUSE 位（bit0 置 0），并把 B 的 prev_size 设为 P 的大小，使 free(B) 时认为前一个 chunk P 空闲。\n3. free(B) → 触发 unlink(P)：\n   - FD->bk = BK：把 &g_ptr[0] - 0x10 写入 g_ptr[0]；\n   - 结果 g_ptr[0] 被改写为指向 g_ptr 数组自身附近。\n4. 此时 edit(g_ptr[0]) 实际上是在改写 g_ptr 数组的内容，可把任意元素设为任意地址，从而获得任意写原语。\n\n后续 getshell：用任意写把 __free_hook 改为 system 地址（glibc 2.31 仍存在 __free_hook），再 free 一个内容为 \"/bin/sh\" 的 chunk，即触发 system(\"/bin/sh\")。\n\n关键：完整性校验是现代 unlink 利用的核心难点，必须借助一个'已存储 P 地址的可写位置'（如全局指针数组）作为 FD/BK 落点，这也是 unlink 题常设计全局数组的原因。若程序没有这样的位置，unlink 难以直接利用。",
+      "explanation": "unlink 利用的是 free 时相邻空闲 chunk 从 bin 中摘除这一固有操作，通过伪造 chunk 的 fd/bk 把'链表摘除'变成'任意地址写'。glibc 2.29 之前无完整性校验，伪造更简单；2.31 引入 FD->bk==P 且 BK->fd==P 的校验，必须借助全局指针数组等天然存着 chunk 地址的位置才能满足。与 tcache poisoning（需 UAF）不同，unlink 不需要 UAF，只要能伪造 chunk 并触发 free 即可，适用于'free 后置空指针但有堆溢出'的场景。掌握 unlink 的栈算术（0x18 / 0x10 偏移）和校验构造是关键。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "IO_FILE",
+      "question": "某 64 位菜单题（glibc 2.23/2.24）只有 malloc 与 edit，没有 free 功能，但存在堆溢出可修改 top chunk 的 size 字段。请说明 House of Orange 利用思路：如何在不调用 free 的情况下让 chunk 进入 unsorted bin 以泄露 libc，以及后续如何结合 _IO_FILE getshell。",
+      "answer": "House of Orange 的核心是：利用 malloc 扩展 top chunk 失败时的处理逻辑，在不调用 free 的情况下把原 top chunk 放入 unsorted bin，再配合 _IO_FILE + abort 触发 FSOP getshell。适用于'无 free 原语'的场景。\n\nStage 1：伪造 top chunk size，触发 sysmalloc 失败\n1. 先泄露 heap 基址（通过格式化字符串、程序回显或其他泄露原语）。\n2. 通过 edit 溢出修改 top chunk 的 size 字段：把 size 改得很小（如 0x10，保留 PREV_INUSE 位），使其无法满足后续较大的 malloc 请求。\n3. 调用 malloc 申请一块比伪造 top size 更大的内存（如 0x1000）。此时 top chunk 空间不足，触发 sysmalloc 尝试 brk 扩展；当 brk 失败或受限（题目常通过 mmap 布局限制）时，glibc 会把原 top chunk 释放进 unsorted bin——全程没有显式 free 调用。\n\nStage 2：泄露 libc\nunsorted bin 中 chunk 的 fd/bk 指向 libc 内的 main_arena 相关地址。通过 edit 读取该 chunk 的 fd，得到 main_arena 偏移地址，减去 libc.sym['main_arena'] 即得 libc 基址。（这一步需要一个读原语，如 edit 回显或格式化字符串。）\n\nStage 3：利用 _IO_list_all + _IO_str_jumps + abort getshell\n1. 在堆上（利用 top chunk 剩余空间或后续 malloc）伪造一个 _IO_FILE_plus 结构体，将其 vtable 指针指向 _IO_str_jumps（glibc 2.24 前 _IO_str_jumps 可绕过 vtable 校验，或该版本尚无 _IO_vtable_check）。\n2. 把伪造 FILE 链入 _IO_list_all：修改 unsorted bin 中某个 chunk 的 bk 指向 &_IO_list_all - 0x10；当后续 malloc 从 unsorted bin 取 chunk 时，触发 unsorted bin 扫描，通过 bk->fd 的写入把伪造 FILE 链入全局 _IO_list_all 链表。\n3. 触发 abort：故意制造一次 malloc 错误（如申请非法大小或触发 malloc_printerr），glibc 调用 abort → _IO_cleanup 遍历 _IO_list_all → 对每个 FILE 调用其 vtable 的 __overflow → 伪造 FILE 走到 _IO_str_overflow，跳转到预设地址 getshell。\n4. 布置参数：将伪造 FILE 的相关字段（如 _IO_buf_base 等）指向 \"/bin/sh\" 字符串，并使 __overflow 槽位等价于 system，从而执行 system(\"/bin/sh\")。\n\n关键要点：\n- 全程无需 free，靠 top chunk size 伪造 + 大 malloc 触发 sysmalloc 失败制造 unsorted bin 是 House of Orange 的精髓。\n- _IO_str_jumps 是该版本下绕过 vtable 校验的关键（2.24+ 引入 _IO_vtable_check 后原版失效，需改用 House of Apple 系列）。\n- abort 由 malloc_printerr 触发，因此要故意让某次 malloc 报错。\n\n注意：不同 glibc 小版本的偏移（unsorted bin 链入 _IO_list_all 的偏移、_IO_str_jumps 的布局）略有差异，需在目标环境用 GDB 动态验证。",
+      "explanation": "House of Orange 解决了'无 free 原语'场景下的堆利用难题——通过伪造 top chunk 大小让 malloc 自身把旧 top chunk 扔进 unsorted bin，既获得 libc 泄露又为后续 FSOP 提供了可控堆布局。它是把堆漏洞与 IO_FILE 利用结合的经典范式：unsorted bin 的 bk 改写用于把伪造 FILE 链入 _IO_list_all，abort 触发遍历调用伪造 vtable。与现代 House of Apple 2（glibc 2.34+，HOA2）相比，House of Orange 适用于更老的 2.23/2.24 环境，利用了 _IO_str_jumps 与无 vtable 校验的窗口期，理解它有助于掌握 FSOP 的演化脉络。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "格式化字符串",
+      "question": "某 64 位程序（Partial RELRO，PIE 未开启）存在格式化字符串漏洞：printf(buf)，buf 由用户输入；程序用 atoi 解析菜单选择，已知格式化字符串在栈上的起始偏移为 6。请设计利用格式化字符串将 atoi@GOT 覆盖为 system 地址、再输入 '/bin/sh' getshell 的完整思路，并说明为什么用 %hhn 逐字节写而非一次性 %n 写。",
+      "answer": "格式化字符串任意写原理：%N$hhn 将'截至目前已输出的字符数'的最低 1 字节写入第 N 个参数指向的地址。通过控制前面的输出宽度，可向任意地址逐字节写入任意值，从而篡改 GOT 表项。\n\n完整利用步骤：\n1. 泄露 libc（若 system 地址未知）：先用 %6$s 或 %N$p 泄露栈上/got 中地址，计算 libc 基址，得到 system 地址。本题 PIE 未开，atoi@GOT 地址固定，可直接作为写入目标。\n2. 确定写入目标：把 atoi@GOT（8 字节）的值改写为 system_addr。8 字节需分 8 次逐字节写（每次 %hhn 写 1 字节）。\n3. 构造 payload（64 位目标地址含 \\x00，必须把地址放在格式化控制串之后，否则会被 printf 截断）：\n   - 前半部分：格式化控制串，用 %c / 宽度控制已输出字符数，再用 %N$hhn 触发对应字节写入；\n   - 后半部分：8 个目标字节地址（atoi_got, atoi_got+1, ..., atoi_got+7），按'待写入值从小到大'排序后依次排列，使输出字符数递增，每次只增加少量字符即可写下一字节。\n4. pwntools 自动化（强烈推荐）：\n   payload = fmtstr_payload(offset=6, writes={atoi_got: system_addr})\n   fmtstr_payload 会自动：按字节拆分目标值、排序、用 %hhn 逐字节写入、把地址放在 payload 尾部以避开 \\x00 截断、自动调整 offset。\n5. 触发：发送 payload → printf 执行后 atoi@GOT 被改写为 system。\n6. getshell：下次菜单输入时程序调用 atoi(input)，由于 atoi@GOT 已指向 system，实际执行 system(input)。输入 '/bin/sh' → system('/bin/sh') getshell。（atoi 本应把字符串转数字，但此时参数被直接传给 system，'/bin/sh' 作为命令执行，无需是合法数字。）\n\n为什么用 %hhn 逐字节写而非一次性 %n：\n- %n 一次写 4 字节（int），写入值必须等于'已输出字符总数'。要写入一个 8 字节地址（如 0x7f1234567890，低 4 字节约 0x34567890 ≈ 8.8 亿）需先输出近 9 亿个字符，完全不现实。\n- %hn 写 2 字节（最大 65535 字符），%hhn 写 1 字节（最大 255 字符），每次只需输出少量字符，分多次拼接即可写出任意 8 字节值，是实际可行的方案。\n- pwntools 的 fmtstr_payload 自动处理字节拆分与排序，手写易出错（尤其地址排序和 offset 换算）。\n\n注意事项：\n- 64 位下目标地址含 \\x00，地址必须放 payload 尾部；放尾部后地址在栈上的实际位置偏移会变化，pwntools 会自动重算，手写时要仔细数清楚第几个参数对应哪个地址。\n- 写入完成后验证：可用 %N$s 读回 atoi@GOT 确认是否已变为 system 地址，再触发菜单输入。\n- 若目标为 Full RELRO，GOT 只读，此路不通，需改用栈溢出或堆等其他原语。",
+      "explanation": "格式化字符串任意写的核心是 %N$hhn 逐字节精确写入，通过控制'已输出字符数'把任意值写入任意地址。把 atoi@GOT 改为 system 是 Partial RELRO 下最经典的 GOT 劫持：atoi 是菜单题高频调用且参数可控的函数，劫持后输入即命令。选择 %hhn 而非 %n 是出于输出量的现实考量——单次写入值越大，需要预先输出的字符越多，逐字节写把每次输出上限压到 255。实战中应直接用 pwntools 的 fmtstr_payload，它封装了字节拆分、排序、地址尾部放置与 offset 调整这些易错细节。本题 PIE 未开简化了地址计算，若 PIE 开启需先泄露程序基址再算 GOT 地址。"
+    }
+  ]
+}
