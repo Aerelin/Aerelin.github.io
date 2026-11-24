@@ -1,0 +1,126 @@
+{
+  "date": "2026-11-24",
+  "title": "Pwn 每日一练 · Day 008",
+  "topics": ["pwntools", "GDB调试", "保护机制", "IDA逆向", "栈溢出", "ROP链构造", "堆利用", "格式化字符串", "IO_FILE", "内核利用基础", "shellcode"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 的 tube 对象提供多个接收方法，关于 recv、recvline、recvall 的区别，下列说法正确的是？",
+      "options": [
+        "recv(n) 接收指定字节数，recvline 接收一行（直到换行符），recvall 接收直到 EOF/连接关闭",
+        "recvline 接收指定字节数，recv 接收一行，recvall 接收所有数据",
+        "三者功能完全相同，只是名称不同",
+        "recvall 只接收一行数据"
+      ],
+      "answer": 0,
+      "explanation": "recv(n) 精确读取 n 字节（阻塞直到凑够或超时）；recvline 读取一行，遇到换行符 \\n 截止（可用 recvline(keepends=False) 去掉换行）；recvall 持续读取直到对端关闭连接或 EOF，常用于一次性 dump 大量输出。三者行为不同，需根据程序输出格式选择：按行输出的菜单用 recvuntil/recvline，已知长度的数据用 recv，不确定长度且会关闭连接的用 recvall。"
+    },
+    {
+      "id": "q2",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "GDB调试",
+      "question": "GDB 中附加到一个正在运行的进程进行调试使用命令 ______（接进程号）；设置'仅当某条件满足时才中断'的条件断点，可在 break 命令后使用关键字 ______ 再接条件表达式（如 break *0x401234 if $rax==0）。",
+      "answer": ["attach;if", "attach，if"],
+      "explanation": "attach <pid> 将 GDB 附加到已运行的进程，便于调试守护进程或已启动的远程目标；调试结束用 detach 分离，程序继续运行。条件断点语法为 break <位置> if <条件>，例如 'b *0x401234 if $rax==0'，只有当 rax 为 0 时才停下，避免在循环中反复命中。条件断点配合 watch 监视点（如 watch *0xaddr 监视某内存被改写），是定位特定状态下漏洞触发点的高效手段。"
+    },
+    {
+      "id": "q3",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "开启 Canary（栈金丝雀）保护的程序发生栈溢出时，若攻击者覆盖了 Canary 但未还原其正确值，函数返回前会发生什么？",
+      "options": [
+        "程序静默崩溃，无任何提示",
+        "触发 'stack smashing detected' 错误并终止进程",
+        "Canary 会自动修复为原值，程序继续正常运行",
+        "程序直接跳转到被覆盖后的返回地址执行"
+      ],
+      "answer": 1,
+      "explanation": "函数 epilogue 会校验 Canary 是否被改动：若被覆盖，glibc 的 __stack_chk_fail 被调用，输出 '*** stack smashing detected ***: <program> terminated' 并 abort 终止进程。因此直接覆盖返回地址而不处理 Canary 无法劫持控制流——必须先泄露或爆破 Canary，在 payload 中把正确 Canary 填回原位，才能通过校验并继续覆盖返回地址。A 错误（有明确报错），C/D 与保护机制的实际行为相反。"
+    },
+    {
+      "id": "q4",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中分析二进制时，光标所在处被错误识别为数据（db），想将其重新定义为代码并加入反汇编，应按下的键是？",
+      "options": ["C (Code)", "D (Data)", "A (ASCII)", "U (Undefine)"],
+      "answer": 0,
+      "explanation": "C 键将光标处数据转换为代码（Code），IDA 会从该地址开始重新反汇编；常配合 P 键在反汇编出的代码上创建函数。D 键相反——把代码转为数据；A 键将数据转为 ASCII 字符串；U 键取消已定义的内容使其变为未定义。逆向中若函数被截断或反汇编不完整（如控制流被错误识别），常在异常地址按 C 重新定义代码，再按 P 创建函数，可修复反编译（F5）结果。"
+    },
+    {
+      "id": "q5",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "栈溢出",
+      "question": "64 位 Linux 程序典型栈帧（从高地址到低地址）布局为：返回地址 → saved rbp → ______（若开启 Canary）→ 局部变量与缓冲区。因此缓冲区向高地址溢出时，需先越过 Canary 才能覆盖到 saved rbp 与返回地址。",
+      "answer": ["Canary", "金丝雀", "canary"],
+      "explanation": "x86-64 下 Canary 位于 saved rbp 之前（低地址方向），即 [rbp-0x8]；缓冲区通常在 [rbp-0xxx] 更低处。溢出时数据从低地址向高地址填充，依次经过缓冲区 → Canary → saved rbp → 返回地址。所以利用栈溢出时，覆盖返回地址必须先正确越过 Canary（泄露/爆破后填回原值）。32 位下 Canary 位于 [ebp-0x8]，布局同理。确定 Canary 精确偏移可用 cyclic 触发崩溃后，在 GDB 中查看 [rbp-0x8] 的值并用 cyclic_find 反算。"
+    },
+    {
+      "id": "q6",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "ROP链构造",
+      "question": "在 CTF-Pwn 中收集 ROP gadget 时，下列哪种方法无法用于查找程序内的 gadget？",
+      "options": [
+        "使用 ROPgadget --binary ./pwn 列出所有可用 gadget",
+        "使用 ropper -f ./pwn 搜索 gadget 并可自动生成 ROP 链",
+        "用 pwntools 的 ROP(elf) 对象，通过 rop.rdi / rop.find_gadget(...) 等方式获取",
+        "在 IDA 的字符串窗口（Shift+F12）中搜索 gadget 关键字"
+      ],
+      "answer": 3,
+      "explanation": "ROPgadget、ropper 是专门扫描二进制可执行段、按指令序列匹配提取 gadget 的工具；pwntools 的 ROP(elf) 会自动收集二进制中的 gadget 并提供寄存器级便捷访问（如 rop.rdi 返回 pop rdi; ret 的地址）。而 IDA 字符串窗口（Shift+F12）只列出程序中的字符串常量，与代码中的 gadget 指令序列无关，无法用来查找 gadget。找 gadget 时优先用 ROPgadget --binary ./pwn | grep 'pop rdi' 快速定位；若缺少特定 pop 寄存器（如 pop rdx; ret），可考虑 ret2csu 或 ret2reg 替代。"
+    },
+    {
+      "id": "q7",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "堆利用",
+      "question": "glibc 堆管理中，当某个大小类的 tcache 链表已被填满（最多 ______ 个 chunk）后，再 free 一个同大小的 chunk，该 chunk 会进入 ______ bin（若在其大小范围内）；若 chunk 大小超出 fastbin 范围且不与 top chunk 合并，则会进入 ______ bin，其 fd/bk 指向 libc 内 main_arena 相关地址，可用于泄露 libc 基址。",
+      "answer": ["7;fastbin;unsorted", "7，fastbin，unsorted"],
+      "explanation": "free 时的入 bin 优先级：先尝试放入对应大小类的 tcache（每类最多 7 个）→ tcache 满后放入 fastbin（64 位下通常 ≤0x80 的小 chunk）→ 超出 fastbin 范围的进入 unsorted bin，后续再由 malloc 整理归入 small/large bin。unsorted bin 中 chunk 的 fd/bk 初始指向 &main_arena.bins（libc 内），读取它即可泄露 libc。实战中要泄露 libc，常先连续 free 7 个同大小 chunk 填满 tcache，第 8 个 free 的 chunk 才会落入 unsorted bin；若程序 free 次数有限，则需选择本身就超出 tcache/fastbin 范围的大 chunk，一次 free 即进 unsorted bin。这也是 7 这个 tcache 上限在利用中如此关键的原因。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "格式化字符串",
+      "question": "已知某 64 位程序存在 printf(buf) 格式化字符串漏洞，buf 在栈上的起始偏移为 6，程序 PIE 未开启，目标地址 target 已知（如某个 GOT 表项地址）。请说明如何利用 %N$s 实现对 target 指向内存内容的任意读（泄露），并解释为什么 64 位下要把 target 地址放在 payload 的开头而非末尾。",
+      "answer": "任意读原理：%N$s 会把第 N 个参数当作一个 char* 指针，输出该指针指向的以 \\x00 结尾的字符串。若把 target 地址放在栈上第 N 个参数的位置，printf 执行 %N$s 时就会输出 target 指向的内存内容（直到遇到空字节），实现任意读泄露。\n\n构造步骤：\n1. 确定偏移：先用 'AAAAAAAA' + '%p'*若干 定位起始偏移（本题已知为 6，即第 6 个参数就是格式化字符串本身的起始位置）。\n2. 把 target 地址布置到栈上第 6 个参数位置：由于偏移为 6，第 6 个参数对应 payload 的起始 8 字节。因此把 target 地址放在 payload 开头，再用 %6$s 读取它指向的内容：\n   payload = p64(target) + b'%6$s\\n'\n   （开头 8 字节是 target 地址，恰好落在第 6 个参数；其后的 %6$s 读取该地址指向的字符串。）\n3. 接收泄露内容并解析：若 target 是某个 GOT 表项，读出的就是 libc 函数真实地址；用 u64(leak.ljust(8, b'\\x00')) 补齐到 8 字节后减去符号偏移得 libc 基址。\n\n为什么 64 位下地址放开头（而任意写时放末尾）：\n- 64 位地址最高字节为 0x00（如 0x00007f...）。\n- 任意读（%s）：把地址放 payload 开头，printf 先解析控制串、按偏移取参数时直接取到地址，地址虽含 0x00 但不影响已经解析过的控制串，可正常读取。\n- 任意写（%hhn）：若把地址放开头，地址中的 0x00 会截断后续格式化控制串，导致后面的 %N$hhn 无法被解析；因此任意写时地址必须放 payload 尾部（控制串之后），pwntools 的 fmtstr_payload 会自动处理这个布局并相应调整 offset。\n- 简言之：读操作地址在前、写操作地址在后，方向相反，根源都是 0x00 截断。\n\n注意事项：\n- %s 遇 \\x00 停止输出，若目标内存起始就是 0x00 会读不到内容，可改用 %N$p 读取该位置的值，或先泄露低位。\n- 泄露多个函数地址时循环切换 target 即可；结合 u64 时要注意补零和符号位扩展。",
+      "explanation": "格式化字符串既能写也能读：%n 写、%s 读。任意读常用于在缺少专用输出函数时泄露 GOT（libc 地址）或栈地址。64 位利用的核心难点是地址含 0x00 导致截断：读操作（%s）把地址放 payload 开头可避开截断；写操作（%hhn）把地址放尾部。两者方向相反，抓住'printf 先解析控制串、再按偏移取参数'的本质即可理解。任意读泄露 libc 后即可进入常规 ret2libc 流程，是格式化字符串题目的常见第一步。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "IO_FILE",
+      "question": "某 64 位菜单题存在堆任意写原语，但没有任何输出函数，无法用常规方式泄露 libc。请说明 'stdout 泄露' 技术的原理：如何通过篡改 _IO_2_1_stdout_ 结构体的字段，让程序在后续正常输出时顺带泄露 libc 地址？需要修改哪些关键字段？",
+      "answer": "stdout 泄露原理：\n_IO_2_1_stdout_ 是 libc 中的全局 stdout FILE 结构体，程序的 printf/puts 等输出都要经过它的缓冲区，输出内容取自 _IO_write_base 指向的位置。若攻击者改写这些字段，就能把 stdout 的输出源指向任意内存（如 unsorted bin 中 chunk 的 fd，那里存着 libc 地址），从而让程序'正常输出'时把 libc 地址打出来——无需额外输出函数。\n\n需要修改的关键字段（64 位 glibc 2.23/2.27 常见偏移）：\n- _flags（偏移 0x0）：调整标志位，使 stdout 进入写模式并强制刷新。常用值 0xfbad1800 或 0xfbad1887（设置 _IO_CURRENTLY_PUTTING、_IO_IS_APPENDING 等位），绕过内部检查，强制走 __overflow 刷新路径把缓冲区写出。\n- _IO_read_ptr / _IO_read_end / _IO_read_base（偏移 0x8 / 0x10 / 0x18）：一般置 0，避免干扰刷新逻辑。\n- _IO_write_base（偏移 0x20）：改为要泄露的内存起始地址，通常指向 unsorted bin 中某 chunk 的 fd 字段（那里存着 libc main_arena 指针）。\n- _IO_write_ptr（偏移 0x28）：改为泄露结束地址，即 _IO_write_base + 泄露长度，决定输出多少字节。\n- _IO_write_end / _IO_buf_base / _IO_buf_end：按需设置，使输出长度足够且不触发额外边界检查。\n- vtable 指针保持为合法的 _IO_file_jumps（不要改），避免触发 vtable 校验报错。\n\n触发：程序下一次调用任何输出函数（如菜单打印的 puts/printf）时，stdout 会从 _IO_write_base 指向的位置输出数据，从而泄露目标内存内容。\n\n前置条件与常见流程：\n- 需要一个任意写原语覆盖 _IO_2_1_stdout_（本题已有）。\n- 若连 libc 基址都不知道、无法定位 _IO_2_1_stdout_，则需先通过堆布局拿到一个 libc 相关地址：让某 chunk 进入 unsorted bin，用任意写把 _IO_write_base 指向该 chunk 的 fd，程序下次输出即泄露 libc——一次任意写同时完成'定位 + 泄露'。\n\n注意：不同 glibc 版本的字段偏移与可用 _flags 值略有差异，需在目标环境用 GDB 动态验证；较新版本（2.34+）对 stdout 的检查更严格，可能需要额外处理 _flags 或改用其他 IO_FILE 技术。",
+      "explanation": "stdout 泄露是'无输出函数'场景下泄露 libc 的经典技巧——它不新增输出，而是劫持现有 stdout 结构体的输出源，让程序正常的 puts/printf 把攻击者选定的内存内容打出来。核心是改写 _flags 强制走刷新路径，再把 _IO_write_base/_IO_write_ptr 指向含 libc 地址的内存（通常是 unsorted bin 的 fd）。它与 IO_FILE FSOP（伪造 vtable 劫持控制流 getshell）是同一结构体的两种利用方向：前者改数据字段用于信息泄露，后者改 vtable 用于控制流劫持。掌握 stdout 的字段布局（_flags / _IO_write_base / _IO_write_ptr 偏移）是该技术的关键。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "内核利用基础",
+      "question": "某 Linux x86-64 内核驱动存在栈溢出漏洞：内核函数中用 copy_from_user 把用户数据拷到栈上固定大小缓冲区，溢出可覆盖到该内核函数的返回地址。目标系统开启 KASLR、SMEP、SMAP，且驱动额外提供了一个可控的任意写原语（可向内核任意地址写 8 字节）。请设计完整的提权利用链，依次说明：① 如何泄露内核基址；② 如何绕过 SMEP/SMAP 完成提权；③ 如何安全返回用户态。给出各阶段关键思路。",
+      "answer": "完整利用链设计：\n\n① 泄露内核基址（绕过 KASLR）\n- 优先检查 /proc/kallsyms 是否可读：若可读，直接读取 commit_creds、prepare_kernel_cred、swapgs_restore_regs_and_return_to_usermode 等符号的运行时地址，无需额外泄露。\n- 若不可读，寻找驱动自带的信息泄露：例如驱动的读接口是否返回内核指针、是否存在未初始化的内核栈/堆数据拷贝到用户态。拿到一个已知符号的运行时地址后，减去该符号的固定偏移（从 /boot/System.map 或同版本 kallsyms 获取）即得内核基址。\n- 拿到内核基址后，所有内核符号地址 = base + 固定偏移。\n\n② 绕过 SMEP/SMAP 完成提权\nSMEP 阻止内核执行用户态代码（不能 ret2usr），SMAP 阻止内核访问用户态数据（ROP 链和数据不能放用户态）。本题有任意写原语，有两条可行路径：\n\n路径 A（首选，覆盖 modprobe_path，最简洁）：\n- 内核全局字符串 modprobe_path 默认值为 '/sbin/modprobe'，当用户态执行内核无法识别格式的文件时，内核会以 root 调用该路径。\n- 用任意写把 modprobe_path 覆盖为攻击者可控文件路径，如 '/tmp/x\\x00'。\n- 用户态准备 /tmp/x（内容如 '#!/bin/sh\\nchmod 777 /flag' 或反弹 shell），chmod +x /tmp/x。\n- 用户态 execve 一个格式无法识别的文件（写入非 ELF 魔数后执行它）→ 内核调用 modprobe → 以 root 执行 /tmp/x → 提权完成。\n- 此路径无需构造内核 ROP、不执行用户态代码、不访问用户态数据，SMEP/SMAP 下完全有效，是本题最优解。\n\n路径 B（内核 ROP，调用 commit_creds(prepare_kernel_cred(0))）：\n- 用任意写把 ROP 链布置在内核可写内存（如内核栈或内核堆），避开 SMAP。\n- 栈溢出覆盖返回地址跳到 ROP 链首：设置 rdi=0 调用 prepare_kernel_cred(0)，返回值（新 cred 指针）在 rax；再用 'mov rdi, rax; ...' 类 gadget 把 rax 搬到 rdi，调用 commit_creds 完成提权。\n- 需凑齐 pop rdi、控制 rax→rdi 的搬运 gadget，比路径 A 复杂。\n\n③ 安全返回用户态\n- 走路径 A（modprobe_path）：提权在 /tmp/x 以 root 执行时完成，/tmp/x 结束后控制权自然回到用户态，无需手动构造 iretq 帧——这也是路径 A 更简洁的原因之一。\n- 走路径 B（内核 ROP）：提权后必须恢复用户态上下文，否则触发 #GP。\n  a. ROP 链末尾跳转到内核自带的 swapgs_restore_regs_and_return_to_usermode gadget（地址 = base + 偏移）。\n  b. 该 gadget 前需在栈上准备用户态上下文帧，依次为（占位）、RIP（用户态 mmap 的可执行页地址，放 execve('/bin/sh') 或读 flag 的代码）、CS=0x33、RFLAGS=0x202、RSP（用户态栈）、SS=0x2b。\n  c. gadget 内部执行 swapgs + iretq，从 ring0 降回 ring3，跳到用户态 RIP 执行。\n\n验证：返回用户态后执行 id / whoami 显示 uid=0(root)，或直接 cat /flag 成功。\n\n关键要点：\n- KASLR 是前提，必须先泄露内核基址才能定位所有 gadget 和函数地址。\n- SMEP/SMAP 排除了 ret2usr 和用户态 ROP，利用必须全部在内核态可访问的内存完成。\n- 本题的任意写原语是核心优势：既能布置内核 ROP 链，又能直接覆盖 modprobe_path——优先选更简单的 modprobe_path 方案。\n- 现代内核（4.14+）的 swapgs_restore_regs_and_return_to_usermode 偏移稳定，是返回用户态的首选 gadget。",
+      "explanation": "本题综合考察内核利用的全链路：KASLR 泄露 → SMEP/SMAP 绕过 → 提权 → 返回用户态。核心思路是优先利用题目给出的'任意写原语'这一强原语——它既可以布置内核 ROP 链，又可以直接覆盖 modprobe_path 走更简洁的提权路径。SMEP/SMAP 的存在排除了 ret2usr 和用户态 ROP，迫使利用全部在内核态完成。modprobe_path 覆盖是这类'有任意写但凑不齐 ROP'场景的最优解，把复杂的内核函数调用降级为一次字符串写 + 一次用户态触发。返回用户态时优先复用内核自带的 swapgs_restore_regs_and_return_to_usermode gadget，避免手算 iretq 帧。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "栈溢出",
+      "question": "某 32 位 Linux 程序 checksec 结果：NX 关闭、Canary 未开启、PIE 未开启。程序存在栈溢出（read(0, buf, 0x200)，buf 在栈上），且启动时会先输出 buf 的地址（即栈地址已知）。程序未导入 system，也没有 '/bin/sh' 字符串。请设计 getshell 方案，写出关键 payload 结构，并说明为什么本题需要先泄露栈地址。",
+      "answer": "方案：栈上直接执行 shellcode（NX 关闭 → 栈可执行）。\n\n为什么需要先泄露栈地址：\n- NX 关闭意味着栈上数据可执行，但 ASLR 会随机化栈的基址，每次运行 buf 的实际地址都不同。\n- 要让 CPU 跳到 buf 里的 shellcode 执行，返回地址必须填成 buf 的运行时地址。若程序不输出 buf 地址，攻击者无法知道该填什么（ASLR 使栈地址随机），shellcode 路线就走不通。\n- 本题程序主动输出 buf 地址，等于提供了栈地址泄露，使 shellcode 直接执行成为可能——这是 NX 关闭 + 栈地址泄露的经典组合。\n\n利用步骤：\n1. 接收程序输出的 buf 地址（记为 buf_addr）。\n2. 确定溢出偏移：用 cyclic 找到覆盖到返回地址的字节数（记为 offset）。\n3. 构造 payload：把 shellcode 放在 buf 起始处，返回地址指向 buf_addr。\n   payload = shellcode + b'A' * (offset - len(shellcode)) + p32(buf_addr)\n   说明：shellcode 从 buf 开头放；中间用 'A' 填充到返回地址位置；最后 4 字节返回地址覆盖为 buf_addr，函数 ret 时即跳到 buf 开头执行 shellcode。\n   （若 offset 较小放不下 shellcode，可把 shellcode 放在返回地址之后的栈上，返回地址指向 shellcode 所在的更高地址：payload = b'A'*offset + p32(buf_addr + offset + 4) + shellcode。）\n4. 发送 payload，程序 ret 后即执行 shellcode getshell。\n\nshellcode 选择（32 位 Linux，execve('/bin/sh',0,0)）：\n- 系统调用号 execve = 11（0xb），通过 eax 传递；参数 ebx='/bin/sh' 地址、ecx=0、edx=0，最后 int 0x80 触发。\n- pwntools 自动生成（内部已把 '/bin/sh' 字符串压栈并取其地址，无需程序自带该字符串）：\n  context.arch = 'i386'\n  shellcode = asm(shellcraft.i386.linux.sh())\n\npayload 示例：\n```python\nfrom pwn import *\ncontext(os='linux', arch='i386')\nio = process('./pwn')\n# 1. 接收泄露的栈地址\nio.recvuntil(b'buf: ')\nbuf_addr = int(io.recvline(), 16)\nlog.success('buf_addr = ' + hex(buf_addr))\n# 2. 确定偏移（假设已用 cyclic 测得为 0x88）\noffset = 0x88\n# 3. 构造并发送\nshellcode = asm(shellcraft.i386.linux.sh())\npayload = shellcode.ljust(offset, b'A') + p32(buf_addr)\nio.sendline(payload)\nio.interactive()\n```\n\n注意事项：\n- shellcode 坏字符：若输入走 strcpy/gets 等字符串函数，需避免 \\x00/\\x0a，用 pwntools encoders 编码；本题用 read 按字节读取，不受空字节限制。\n- 若 NX 开启，此路不通，需改用 ROP/ret2libc；本题 NX 关闭是走 shellcode 的前提。\n- 若程序未泄露栈地址，32 位下 ASLR 随机化位数较少（约 8-12 位），可尝试爆破，但成功率有限；更稳妥的是改用不依赖栈地址的 ret2libc 路线。\n- shellcode 长度必须 ≤ offset，否则会覆盖到返回地址之后的区域导致布局错乱，此时改用'返回地址之后放 shellcode'的布局。",
+      "explanation": "本题是 NX 关闭 + 栈地址泄露场景下的标准 shellcode 路线。核心判断逻辑：NX 关闭 → 栈可执行 → 可以执行 shellcode；但 ASLR 随机化栈地址 → 必须先拿到 buf 的运行时地址才能正确设置返回地址，程序主动输出 buf 地址正好满足这一条件。与 ret2libc 相比，shellcode 路线不依赖 libc 版本、不需要泄露 libc，在 NX 关闭 + 栈地址泄露时是最直接的选择。pwntools 的 shellcraft 自动生成含 '/bin/sh' 字符串的 shellcode，解决了程序无该字符串的问题。若 offset 不足，灵活调整 shellcode 在 payload 中的位置（前/后）即可。"
+    }
+  ]
+}
