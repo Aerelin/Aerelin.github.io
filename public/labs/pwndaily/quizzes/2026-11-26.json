@@ -1,0 +1,131 @@
+{
+  "date": "2026-11-26",
+  "title": "Pwn 每日一练 · Day 010",
+  "topics": ["保护机制", "pwntools", "IDA逆向", "堆利用", "GOT/PLT", "栈溢出", "one_gadget", "IO_FILE", "内核利用基础", "ROP链构造", "shellcode"],
+  "estimatedMinutes": 30,
+  "questions": [
+    {
+      "id": "q1",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "保护机制",
+      "question": "关于 NX（No-eXecute，Windows 下称 DEP）保护机制，下列说法正确的是？",
+      "options": [
+        "NX 开启后，栈和堆等数据页上的内容不能被当作代码执行，因此即使泄露了栈地址也不能直接在栈上执行 shellcode",
+        "NX 只保护栈不保护堆，堆上的数据仍可执行",
+        "checksec 中 NX 列显示 NX 表示程序所有内存页都不可执行",
+        "NX 开启后 ROP 技术也无法使用"
+      ],
+      "answer": 0,
+      "explanation": "NX（Linux）/ DEP（Windows）把数据所在页标记为不可执行，CPU 在内核态取指数据页时会触发页错误，因此栈、堆上的 shellcode 无法直接执行——这正是只有 NX 关闭时才能走栈 shellcode 路线的原因。B 错误：NX 同时作用于栈和堆（以及所有数据页）；C 错误：NX 只把数据页设为不可执行，.text 代码段仍可执行，并非所有页都不可执行；D 错误：ROP 执行的是程序自身已有的代码片段（位于可执行的 .text 段），不执行数据页，因此 NX 下 ROP 完全可用。速查：NX 关闭走 shellcode、NX 开启走 ROP / ret2libc，是利用路线选择的基本依据。本题与 11-21 的 ASLR、11-25 的 PIE 互补，单独聚焦 NX 的本质。"
+    },
+    {
+      "id": "q2",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "pwntools",
+      "question": "pwntools 中，把多个数据片段（字符串、整数、地址）按顺序拼接为字节流、其中整数自动按 context.arch 打包的便捷函数是 ______；输出带 [+] 前缀的成功日志用 log.______，输出带 [*] 前缀的提示信息用 log.______。",
+      "answer": ["flat;success;info", "flat，success，info"],
+      "explanation": "flat(*args) 接收任意多个参数，自动把整数用 p64/p32（依 context.arch）打包、把字节串原样拼接，并自动展开列表，是构造 ROP 链/溢出 payload 时最顺手的拼接函数，可替代手写的 b'A'*n + p64(...)。pwntools 日志函数：log.success 输出绿色 [+] 成功信息（如泄露到的地址），log.info 输出蓝色 [*] 普通提示，log.warning 黄色 [!]，log.error 红色 [-]。exploit 中用 log.success('leak = ' + hex(addr)) 标注关键泄露，调试时一目了然。前面试卷已考 p64/u64、recv/send 系方法、cyclic，本题补全 flat 与日志这两个高频 API。"
+    },
+    {
+      "id": "q3",
+      "type": "fill",
+      "difficulty": "basic",
+      "topic": "IDA逆向",
+      "question": "在 IDA Pro 中，把光标处的数据定义为 ASCII 字符串（用于恢复被误识别为代码或原始数据的字符串）按 ______ 键；取消已定义的内容、使其变为未定义字节（便于重新按代码或数据定义分析）按 ______ 键。",
+      "answer": ["A;U", "A，U"],
+      "explanation": "A 键（ASCII）把光标处起的连续字节定义为以 \\x00 结尾的 ASCII 字符串，逆向时若某块数据被 IDA 误识别为代码或 db，按 A 可还原出可读字符串，便于定位提示信息、路径等。U 键（Undefine）取消当前位置已有的定义（代码/数据/字符串都恢复为未定义字节），常用于反汇编错乱时先 U 清除、再按 C 重新定义代码、按 P 创建函数，从而修复 F5 反编译结果。前面试卷已考 C（数据转代码）、D（代码转数据）、X（交叉引用）、F5（反编译）、G/N/Tab，本题补全 A/U 两个数据定义操作键。"
+    },
+    {
+      "id": "q4",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "堆利用",
+      "question": "关于 glibc 堆的 double free 检测，下列说法正确的是？",
+      "options": [
+        "tcache 中连续 free 同一个 chunk 两次不会被任何检测拦截",
+        "glibc 2.29+ 在 tcache chunk 被释放时，会在该 chunk 的 user data 区写入一个指向 tcache 结构的指针（key 字段）；再次 free 同一 chunk 时若检测到该 key 匹配，则报 double free 错误",
+        "fastbin 的 double free 检测是检查 chunk 的 fd 指针是否为 NULL",
+        "只要在两次 free 之间插入一次 malloc，就能绕过所有 double free 检测"
+      ],
+      "answer": 1,
+      "explanation": "glibc 2.29 为 tcache 引入 key 字段防 double free：chunk 被 free 进 tcache 时，其 user data 起始 +0x10 处（第二个 qword）被写入当前线程的 tcache 结构指针；下次再 free 同一 chunk 时，若发现 key 仍等于 tcache 指针，说明该 chunk 已在 tcache 中，触发 'double free or corruption (out)'。A 错误：2.29+ 会被检测。C 错误：fastbin 的 double free 检测是检查 fastbin 链表头（top chunk）是否与待 free 的 chunk 相同（报 'double free or corruption (fasttop)'），不是检查 fd 是否为 NULL。D 错误：插入 malloc 会把该 chunk 从 tcache 取出并清除 key，确实能绕过 tcache 的 key 检测，但这只是其中一种方式，不能说'绕过所有检测'——且需要程序恰好能分配回该 chunk。绕过 tcache double free 检测的本质是清除 key：可再 malloc 拿回该 chunk，或利用另一个指针（UAF/堆溢出）覆写 key 字段为非 tcache 值。"
+    },
+    {
+      "id": "q5",
+      "type": "choice",
+      "difficulty": "basic",
+      "topic": "GOT/PLT",
+      "question": "想确认目标二进制中某个动态导入函数（如 puts）的 GOT 表项虚拟地址，最直接的命令/工具组合是？",
+      "options": [
+        "readelf -r ./pwn（查看重定位表）配合 readelf -S ./pwn（查看 .got/.got.plt 段基址）",
+        "strings ./pwn | grep puts",
+        "file ./pwn",
+        "ldd ./pwn"
+      ],
+      "answer": 0,
+      "explanation": "readelf -r 列出重定位条目，其中 R_X86_64_JUMP_SLOT 类型条目给出每个函数的 GOT 表项偏移与符号名（如 puts 对应的偏移）；readelf -S 显示各节（section）的虚拟地址，找到 .got.plt 段基址后，基址 + 重定位偏移即得 puts@got 的运行时虚拟地址。pwntools 中可直接用 elf.got['puts'] 一步获取，其底层也是解析这些重定位信息（11-19 已考 elf.got/plt 属性，本题补全命令行工具实操角度）。strings 只能找字符串常量、file 查文件类型、ldd 查依赖库，都无法直接得到 GOT 表项地址。注意 Full RELRO 下 .got.plt 常被合并进 .got，仍可用 readelf -r 定位表项。"
+    },
+    {
+      "id": "q6",
+      "type": "fill",
+      "difficulty": "medium",
+      "topic": "栈溢出",
+      "question": "当 Canary 开启且无法通过格式化字符串等方式直接泄露时，可利用 64 位 Canary 最低字节固定为 ______ 的特性进行逐字节爆破：从最高字节开始逐位猜测，每次只改 1 字节，程序未崩溃（未触发 stack smashing）即猜对。已知最低字节固定，最坏情况下共需尝试约 ______ 次（填算式）。爆破有效的前提是服务端采用 ______ 模式（每次请求 fork 子进程，Canary 保持不变）。",
+      "answer": ["0x00;7×256;fork", "0x00，7*256，fork", "\\x00;7×256;fork"],
+      "explanation": "64 位 Canary 共 8 字节，最低字节固定为 0x00（防止字符串函数溢出时顺带覆盖 Canary），因此只需爆破剩余 7 字节，每字节 0x00~0xFF 共 256 种可能，最坏 7×256=1792 次，平均约一半。逐字节爆破利用'程序不崩溃即该字节猜对'的反馈：每次只覆盖到当前字节，猜对则函数正常返回（不触发 stack smashing），猜错则 abort 断开连接。前提是服务端 fork 模式——子进程继承父进程的 Canary，每次请求 Canary 不变，爆破才有意义；若服务端每次 exec 重启，Canary 每次变化，爆破失效。猜解顺序（从高地址字节向低地址）与覆盖方向需配合 GDB 确认 [rbp-0x8] 处的 Canary 位置。本题与 11-20 的 Canary 绕过概念题互补：11-20 考绕过方法的正误判断，本题聚焦逐字节爆破的具体计算与适用前提。"
+    },
+    {
+      "id": "q7",
+      "type": "choice",
+      "difficulty": "medium",
+      "topic": "one_gadget",
+      "question": "关于 one_gadget 的实战使用，下列说法错误的是？",
+      "options": [
+        "one_gadget 输出的每个候选地址都附带约束条件（如 [rsp+0x70]==NULL、rax==NULL 等），必须满足约束才能成功 getshell",
+        "约束不满足时，程序通常在 one_gadget 内部崩溃（SIGSEGV），而非正常拿到 shell",
+        "验证约束是否满足的常用方法：在 GDB 中于 one_gadget 地址处下断点，运行到该处后用 i r 检查相关寄存器、用 x 检查相关内存",
+        "只要泄露了 libc 基址，任意一个 one_gadget 候选地址都能直接 getshell，无需验证约束"
+      ],
+      "answer": 3,
+      "explanation": "one_gadget 找到的是 libc 内部'满足特定寄存器/栈条件即可直接 execve(\"/bin/sh\", 0, 0)'的指令片段，每个候选都带约束，不满足就崩溃。D 错误：必须在 GDB 中逐个验证候选，找到当前调用上下文下约束恰好满足的那个；若所有候选约束都不满足，需先用 ROP 布置好对应寄存器/栈再跳转，或改用 system + '/bin/sh' 的标准 ret2libc 链。A/B/C 均正确。实战流程：泄露 libc 基址 → one_gadget ./libc.so.6 列出候选 → 在 GDB 中于跳转处下断，对每个候选检查约束（如要求 [rsp+0x70]==NULL 就 x/gx $rsp+0x70 看是否为 0）→ 选满足的直接 p64(libc_base + offset) 跳转。本题在 11-25 one_gadget 基本概念题基础上，深入考约束验证这一实战关键步骤。"
+    },
+    {
+      "id": "q8",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "IO_FILE",
+      "question": "请简述 FSOP（File Stream Oriented Programming）的基本原理：glibc 为什么会在异常退出时遍历所有 FILE 结构体？攻击者如何利用伪造的 _IO_FILE_plus 与 vtable 劫持控制流？glibc 2.24 引入的 _IO_vtable_check 对伪造 vtable 施加了什么限制，应如何应对？",
+      "answer": "FSOP 基本原理：\nglibc 用 _IO_FILE_plus 结构体描述每个文件流（stdin/stdout/自定义 FILE），该结构体末尾有一个 vtable 指针，指向函数跳转表（如 _IO_file_jumps），表中存放 __overflow、__xsgetn、__underflow 等函数指针。程序所有 FILE 结构体通过全局链表 _IO_list_all 串起来。当程序调用 exit / abort / 触发 malloc_printerr 时，glibc 执行 _IO_cleanup，遍历 _IO_list_all 上的每个 FILE，调用其 vtable 中对应函数（如 __overflow）刷新缓冲区。\n\n攻击者的利用思路：\n1. 在可写内存（堆 / .bss）伪造一个 _IO_FILE_plus，把它的 vtable 指针指向自己控制的区域，并在该区域的对应槽位（如 __overflow 偏移处）填入 system 或 one_gadget 的地址。\n2. 把伪造 FILE 链入 _IO_list_all（常通过 unsorted bin 攻击：改写 unsorted bin chunk 的 bk，使 malloc 从 unsorted bin 取块时通过 bk->fd 的写入把伪造 FILE 挂到链表头）。\n3. 触发 abort（故意让某次 malloc 报错、或调用 exit）→ _IO_cleanup 遍历链表 → 调用伪造 FILE 的 vtable __overflow → 跳转到 system getshell。\n\nglibc 2.24 的 _IO_vtable_check 限制：\n- 校验 vtable 指针必须落在合法区域 [__start___libc_IO_vtables, __stop___libc_IO_vtables] 之间（即 libc 自带的 vtable 段内），否则 abort。\n- 因此攻击者不能再随便把 vtable 指向堆上自己伪造的跳转表，必须把 vtable 指针指向一个合法的 vtable（如 _IO_str_jumps、_IO_wfile_jumps、_IO_file_jumps），再利用这些合法 vtable 中某个槽位的函数路径实现跳转——这就是 House of Orange / House of Apple 系列的出发点。\n- 应对：选择合法 vtable 作为基址，通过偏移让 __overflow 等槽位落到可控位置或满足条件的 libc 函数（如 House of Apple 2 用 _IO_wfile_jumps + 0xa0 使 overflow 走 _IO_wfile_overflow，配合 'echo' 前缀满足 flags）。\n\n本题聚焦 FSOP 通用机制，与前面试卷的 stdout 泄露（改数据字段做信息泄露）、House of Orange（无 free 造 unsorted bin + _IO_str_jumps）、HOA2（glibc 2.37 具体偏移）互补：本题考'为什么会触发遍历 + vtable 校验的本质限制'。",
+      "explanation": "FSOP 的根基是 _IO_cleanup 对 _IO_list_all 的遍历——只要能把一个伪造 FILE 挂进这个全局链表并触发 abort，glibc 就会替攻击者调用伪造 vtable 里的函数指针。2.24 前 vtable 可任意指向堆，2.24 后 _IO_vtable_check 把 vtable 限制在 libc 合法 vtable 段内，迫使攻击者借道合法 vtable（_IO_str_jumps / _IO_wfile_jumps 等）的特定槽位——House of Apple 系列正是在这个约束下演化出来的。理解'遍历触发 + vtable 校验'这两个核心机制，就能看懂 stdout 泄露、House of Orange、HOA2 等具体技术的共同骨架。"
+    },
+    {
+      "id": "q9",
+      "type": "qa",
+      "difficulty": "medium",
+      "topic": "内核利用基础",
+      "question": "请辨析内核利用中 SMEP 与 SMAP 两种保护的作用与区别：它们分别阻止了哪些传统利用手法？在两者同时开启的情况下，攻击者应如何调整利用策略？",
+      "answer": "一、SMEP（Supervisor Mode Execution Prevention，内核态执行防护）\n- 作用：阻止 CPU 在内核态（ring 0）执行位于用户态页的代码。由 CR4.SMEP 位（bit 20）控制，较新 CPU 支持。\n- 阻止的手法：ret2usr——把内核栈的返回地址覆盖为用户态 shellcode 地址、从内核态直接跳回用户态执行代码。开启 SMEP 后，内核态取指用户态地址会触发 #PF。\n- 不阻止：内核态访问用户态数据（读/写），以及执行内核态自身的代码（ROP gadget）。\n\n二、SMAP（Supervisor Mode Access Prevention，内核态访问防护）\n- 作用：阻止 CPU 在内核态访问（读或写）位于用户态页的数据。由 CR4.SMAP 位（bit 21）控制，比 SMEP 更严格，引入更晚。\n- 阻止的手法：把 ROP 链、伪造的数据结构布置在用户态内存后让内核访问；内核态直接读写用户态缓冲区（除非显式用 stac/clac 临时开关）。\n- 与 SMEP 的区别：SMEP 只管'执行'，SMAP 管'读/写访问'。SMAP 开启意味着即使有内核 ROP，链和数据也不能放用户态。\n\n三、两者同时开启时的利用策略调整：\n1. 放弃 ret2usr：不能跳用户态 shellcode，必须在内核态完成提权。\n2. ROP 链与数据必须布置在内核态可访问内存：如内核栈（漏洞溢出本身就在内核栈上）、内核堆、或直接映射区（physmap）。ret2dir 技术利用内核把所有物理内存直接映射到内核虚拟地址空间这一特性，在直接映射区找到用户态数据的物理页副本，内核态合法访问该副本——既绕过 SMEP（执行的是内核映射区），也绕过 SMAP（访问的是内核映射区而非用户态页）。\n3. 优先用不依赖调用内核函数、只需一次写的提权：如覆盖 modprobe_path（写到内核全局变量，属于内核态写，不碰用户态），把复杂的函数调用降级为一次任意写。\n4. 若必须调用 commit_creds(prepare_kernel_cred(0))，ROP 链全程放内核栈/内核堆，所有地址用泄露的内核基址计算，gadget 全部来自内核 .text。\n5. 返回用户态：用内核自带的 swapgs_restore_regs_and_return_to_usermode gadget + iretq 帧，RIP 指向用户态合法可执行页；这一步从内核态主动降回 ring3，不违反 SMEP/SMAP。\n\n补充：内核中 stac/clac 指令可临时开启/关闭 SMAP（供合法的 copy_from_user 等使用），若攻击者能控制 RIP 执行 stac 也能短暂绕过 SMAP，但实战中较少依赖，优先把链放进内核内存更稳妥。",
+      "explanation": "SMEP 和 SMAP 是现代内核阻断'内核态↔用户态跨界'的两道闸门：SMEP 关执行、SMAP 关数据访问，SMAP 更严格。两者同时开启直接淘汰了 ret2usr 和用户态 ROP，迫使利用全部在内核态内存完成——这就是为什么现代内核题优先考虑 modprobe_path 覆盖（一次内核写）、ret2dir（借直接映射区）、以及把 ROP 链放内核栈/堆的原因。掌握两者的边界（执行 vs 访问）能帮你在拿到内核题时迅速判断哪些老手法失效、该转向哪条利用路径。本题与 11-19 的 KASLR 绕过、11-21 的 current/cred、11-24 的内核全链路互补：那几题考提权与返回，本题专门辨析这两个保护对利用面的限制。"
+    },
+    {
+      "id": "q10",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "ROP链构造",
+      "question": "某 64 位程序（NX 开启，PIE 未开）存在栈溢出，程序内能找到 `pop rax; ret` 和 `syscall` 指令，但找不到足够的 pop rdi/rsi/rdx 来构造完整的 execve 链，也无法泄露 libc。请说明如何利用 SROP（Sigreturn Oriented Programming）getshell：sigreturn 系统调用的作用是什么？pwntools 如何伪造 sigcontext？给出关键 ROP 链结构。",
+      "answer": "SROP 原理：\nsigreturn 是 Linux 用于从信号处理函数返回时恢复进程完整上下文的系统调用（64 位调用号 rax=15）。它从栈上读取一个 sigcontext 结构体（内含 rax~r15、rip、rsp、cs、ss、rflags 等所有寄存器状态），把这些值逐一恢复到 CPU 寄存器中——相当于让内核帮你一次性设置所有寄存器。由于 sigreturn 不校验 sigcontext 的来源，攻击者只要能触发 sigreturn 并在栈上布置一个伪造的 sigcontext，就能把 rip 设为 syscall、rax 设为 59（execve）、rdi 设为 '/bin/sh' 地址，从而 getshell，无需逐个 pop 寄存器。\n\n关键步骤：\n1. 准备 '/bin/sh' 字符串：若程序内没有，先用一段短 ROP 调 read(0, bss_buf, 8) 把 '/bin/sh\\x00' 读入可写的 .bss（本题 PIE 未开，bss 地址固定）。\n2. 用 pwntools 伪造 sigreturn frame（自动按内核 sigcontext 布局填充，无需手算偏移）：\n   from pwn import *\n   frame = SigreturnFrame()\n   frame.rax = 59              # execve 调用号\n   frame.rdi = bss_buf         # '/bin/sh' 地址\n   frame.rsi = 0\n   frame.rdx = 0\n   frame.rip = syscall_ret     # 恢复后 rip 指向 syscall 指令 → 再次执行 syscall 即 execve\n   # rsp 可设为当前栈上某安全位置，保持后续不破坏\n3. 构造 ROP 链：先把 rax 设为 15 触发 sigreturn，紧接着把伪造 frame 放在栈上：\n   payload = b'A' * offset\n   payload += p64(pop_rax_ret) + p64(15)   # rax = sigreturn 调用号\n   payload += p64(syscall)                  # 触发 sigreturn，内核从当前栈上读取 frame\n   payload += bytes(frame)                  # 伪造的 sigcontext 紧跟其后\n   io.sendline(payload)\n4. 执行流：syscall 触发 sigreturn → 内核把 frame 中的值恢复到寄存器 → rip 变为 syscall_ret、rax 变为 59 → CPU 继续执行 syscall，此时 rax=59 即 execve('/bin/sh', 0, 0) → getshell。\n\n要点：\n- 整个利用只需 pop rax; ret 和 syscall 两个 gadget，不需要 pop rdi/rsi/rdx——这正是 SROP 相比 ret2syscall 的优势（gadget 极少时也能打）。\n- SigreturnFrame() 是 pwntools 的核心封装，内部已处理好不同内核版本的 sigcontext 字段偏移，直接赋值即可。\n- 'sigreturn → execve' 是二段跳：第一次 syscall(15) 恢复上下文（把 rax 改成 59、rip 改成 syscall），第二次 syscall 才是真正的 execve。\n- 触发 sigreturn 时 rsp 必须指向伪造 frame 的起始，因此 frame 要紧接在 syscall 之后布置在栈上。\n- 若泄露了 libc 且 gadget 充足，ret2syscall / ret2libc 更直观；SROP 是'gadget 不够、又拿不到 libc'时的兜底利器。",
+      "explanation": "SROP 把'逐个 pop 寄存器布置 execve 参数'这个繁琐过程，替换为'让内核的 sigreturn 帮你一次性恢复所有寄存器'——攻击者只需伪造一个 sigcontext。核心是 sigreturn 不校验 frame 来源这一特性。pwntools 的 SigreturnFrame 自动处理偏移，利用门槛很低；只需凑齐 pop rax + syscall 两个 gadget 即可。'二段跳'（先 sigreturn 改 rax/rip，再 execve）是理解执行流的关键。本题是前面 ret2syscall（11-20）的进阶互补：ret2syscall 需要 pop rdi/rsi/rdx，SROP 在这些 gadget 缺失时仍可 getshell。"
+    },
+    {
+      "id": "q11",
+      "type": "qa",
+      "difficulty": "hard",
+      "topic": "shellcode",
+      "question": "某 64 位程序开启了 seccomp 过滤，禁止 execve 系统调用（无法 getshell），但允许 open/read/write，且 flag 文件在文件系统中可读（如 /flag），同时栈可执行（NX 关闭）。请说明如何构造 ORW（open-read-write）shellcode 直接把 flag 内容输出到屏幕，给出关键系统调用、寄存器布置与 pwntools 代码思路。",
+      "answer": "ORW 原理：\nseccomp 禁止 execve 后，getshell 路线（system/execve）全部失效。但 open/read/write 仍可用——直接用 open 打开 /flag，用 read 把内容读入内存，再用 write 写到标准输出（fd=1），就能把 flag 打出来。这是 seccomp 禁 execve 场景下的标准替代。\n\n系统调用与寄存器布置（64 位，x86-64 Linux）：\n- open：rax=2，rdi=文件路径地址，rsi=0（O_RDONLY），rdx=0 → 返回值 rax = 文件描述符 fd（通常是 3，因为 0/1/2 已被 stdin/stdout/stderr 占用）\n- read：rax=0，rdi=fd，rsi=缓冲区地址，rdx=读取长度 → 返回值 rax = 实际读到的字节数\n- write：rax=1，rdi=1（stdout），rsi=缓冲区地址，rdx=输出长度 → 把 flag 输出到屏幕\n\npwntools 代码思路：\n方法一（最简洁，用 shellcraft 现成模板）：\n```python\nfrom pwn import *\ncontext(os='linux', arch='amd64')\n# open('/flag') → read(rax, rsp, 0x100) → write(1, rsp, 0x100)\nshellcode = asm(\n    shellcraft.amd64.linux.open('/flag') +\n    shellcraft.amd64.linux.read('rax', 'rsp', 0x100) +\n    shellcraft.amd64.linux.write(1, 'rsp', 0x100)\n)\n# 发送到可执行内存并跳转执行\n```\n说明：shellcraft.open 内部会把 '/flag' 字符串压栈并取地址，无需程序自带；open 返回的 fd 在 rax 中，read 的第一个参数直接用 'rax'；read 把数据读到栈顶 rsp 附近，write 再从同地址输出。\n\n方法二（手写，理解每一步）：\n```python\nshellcode = asm('''\n    /* open(\"/flag\", O_RDONLY) */\n    push 0x67616c662f      ; 小端压入 \"/flag\" (注意长度与补零)\n    mov rdi, rsp           ; rdi = 路径地址\n    xor rsi, rsi           ; rsi = O_RDONLY = 0\n    xor rdx, rdx\n    mov rax, 2             ; sys_open\n    syscall\n    /* read(fd, buf, 0x100) */\n    mov rdi, rax           ; rdi = open 返回的 fd\n    mov rsi, rsp           ; rsi = 缓冲区（栈顶）\n    mov rdx, 0x100         ; rdx = 读 256 字节\n    xor rax, rax           ; sys_read = 0\n    syscall\n    /* write(1, buf, 实际长度) */\n    mov rdx, rax           ; rdx = read 实际读到的字节数（精确输出，避免垃圾）\n    mov rdi, 1             ; stdout\n    mov rsi, rsp           ; 同缓冲区\n    mov rax, 1             ; sys_write\n    syscall\n''')\n```\n\n要点：\n- open 成功返回 fd（通常 3），若失败返回 -1，需在 GDB 中确认 /flag 路径正确、当前进程有权限读。\n- read 的返回值（rax）是实际读到的字节数，把它作为 write 的 rdx 可精确输出，避免输出多余的 0x00 或栈垃圾。\n- '/flag' 字符串可用 push 压栈构造（注意小端序与 0 结尾），也可预先写入 .bss。若路径含 null 字节或长度问题，shellcraft.open 更稳妥。\n- 适用场景：seccomp 禁 execve 但允许 open/read/write，且有可执行内存（NX 关，栈/堆/.bss 经 mprotect 可执行）。若 NX 开启，可用 ROP 调用 open/read/write@plt 或 ret2syscall，思路完全相同（把 shellcode 换成 ROP 链）。\n- 若题目连 open 都过滤了，可改用 openat（rax=257）；若 read 被过滤但有 sendfile/writev 等，也可作为替代输出路径。",
+      "explanation": "ORW 是 seccomp 禁 execve 时的标准打法：放弃 getshell，直接用 open/read/write 三个系统调用把 flag 读出来写到 stdout。它不依赖 libc 中的 system，也不需要 '/bin/sh'，只要 open/read/write 不被过滤即可。核心是 open 返回的 fd 要正确传给 read，read 的返回值（实际长度）传给 write 以精确输出。pwntools 的 shellcraft.open/read/write 封装了字符串压栈与寄存器布置，手写版本则帮助理解每一步的寄存器流转。与前面试卷考的 getshell 型 shellcode（shellcraft.sh、空字节、编码）互补：本题考'拿不到 shell 时如何直接读 flag'这一实战高频场景。"
+    }
+  ]
+}
